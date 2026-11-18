@@ -11081,7 +11081,7 @@ function detectQuad(c){
   var gbb=blurGray(g,w,h,7),T2=otsu(gbb);
   mk(function(z){return gbb[z]>T2;});
   mk(function(z){return gbb[z]>T2+6;});
-  var best=null,bs=-1;
+  var best=null,bs=-1,rbest=null,rs=-1;
   masks.forEach(function(m,mi){
     var bc=bigComp(m,w,h);if(bc.area<N*0.2)return;
     var pts=[],x,y;
@@ -11090,9 +11090,11 @@ function detectQuad(c){
     var bq=bestQuad(hullOf(pts));if(!bq){return;}
     if(bc.area/bq.area<0.78)return;
     var q=orderQuad(bq.q);if(!quadValid(q,N)){return;}
-    var es=edgeSupport(q,gb,w,h);if(es.min<0.5||es.mean<0.72)return;
-    var sc=es.mean+0.4*(bq.area/N);if(sc>bs){bs=sc;best=q;}
+    var es=edgeSupport(q,gb,w,h),sc=es.mean+0.4*(bq.area/N);
+    if(es.min>=0.5&&es.mean>=0.72){if(sc>bs){bs=sc;best=q;}}
+    else if(es.mean>=0.5&&es.min>=0.12&&bq.area/N>=0.3&&q.every(function(p){return p[0]>w*0.015&&p[0]<w*0.985&&p[1]>h*0.015&&p[1]<h*0.985;})){if(sc>rs){rs=sc;rbest=q;}}   /* flexible: hoja sobre otras hojas o cortada por el borde de la foto */
   });
+  if(!best)best=rbest;
   if(!best)return null;
   var cx=(best[0][0]+best[1][0]+best[2][0]+best[3][0])/4,cy=(best[0][1]+best[1][1]+best[2][1]+best[3][1])/4;
   return best.map(function(p){var x=(cx+(p[0]-cx)*1.02)/k,y=(cy+(p[1]-cy)*1.02)/k;return [Math.min(c.width,Math.max(0,x)),Math.min(c.height,Math.max(0,y))];});
