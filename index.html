@@ -11672,7 +11672,7 @@ function enoughA(texts,tipo){
     if(!need)return false;var o=mergeForm(texts,g);return need.every(function(k){return o[k]!=null&&o[k]!=='';});}catch(e){return false;}
 }
 function runOcr(){
-  var cur=CUR,imgs=cur.files.filter(function(f){return f.kind==='img';}).slice(0,3);
+  var cur=CUR,imgs=cur.files.filter(function(f){return f.kind==='img';}).slice(0,cur.tipo==='est'?1:3);   /* estimación: se lee solo la hoja resumen (la 1.ª); el desglose va de anexo */
   if(!imgs.length||cur.busy)return Promise.resolve();
   cur.busy=true;var b=$('b-ocr');b.disabled=true;
   var worker=null,texts=[],step='';
