@@ -339,6 +339,8 @@ nav.tabs{box-shadow:0 -4px 16px rgba(0,0,0,.06);border-top:0}
 .linkbtn{border:0;background:none;color:var(--mute);font-size:11.5px;text-decoration:underline;padding:8px 0 0;width:100%;text-align:center}
 .linkbtn[hidden]{display:none}
 
+.pc2 .lg .lgt{font-size:12px;color:var(--slate-3)}
+
 </style>
 </head>
 <body>
@@ -399,6 +401,8 @@ nav.tabs{box-shadow:0 -4px 16px rgba(0,0,0,.06);border-top:0}
 
     <div class="field" id="fw-prov"><div class="lbl"><label for="f-prov" id="l-prov">Proveedor</label><span class="tag" id="t-prov" hidden></span></div>
       <input type="text" id="f-prov" autocomplete="off" list="dl-prov" placeholder="Nombre o razón social"></div>
+    <div class="field" id="fw-concepto"><div class="lbl"><label for="f-concepto" id="l-concepto">Concepto (qué se compra u oferta)</label><span class="tag" id="t-concepto" hidden></span></div>
+      <input type="text" id="f-concepto" autocomplete="off" placeholder="Ej. Limpieza de vidrios en altura"></div>
     <div class="row2" id="r-nit">
       <div class="field" id="fw-nit"><div class="lbl"><label for="f-nit">NIT</label><span class="tag" id="t-nit" hidden></span></div>
         <input type="text" id="f-nit" inputmode="numeric" autocomplete="off" placeholder="0000-000000-000-0"></div>
@@ -477,6 +481,8 @@ nav.tabs{box-shadow:0 -4px 16px rgba(0,0,0,.06);border-top:0}
     </div>
 
     <label class="tgl" id="fw-fisico"><input type="checkbox" id="c-fisico">Recibí el original en físico</label>
+    <div class="row2" id="r-qdn"><div class="field" id="fw-qdn"><div class="lbl"><label for="f-qdn">N.º de quedan</label><span class="tag" id="t-qdn" hidden></span></div><input type="text" id="f-qdn" inputmode="numeric" autocomplete="off"></div>
+      <div class="field" id="fw-nc"><div class="lbl"><label for="f-nc">Notas de crédito</label><span class="tag" id="t-nc" hidden></span></div><input type="text" id="f-nc" autocomplete="off" placeholder="Ej. NC 439"></div></div>
     <div class="field" id="fw-notas"><label for="f-notas">Notas</label><textarea id="f-notas" placeholder="Opcional"></textarea></div>
     <datalist id="dl-prov"></datalist><datalist id="dl-contrato"></datalist>
   </div>
@@ -10672,7 +10678,9 @@ var PROYECTOS=[
   {c:'CEA', n:'City Express by Marriott Aeropuerto', l:'cea', rx:/city\s*express|marriott|\bCEA\b/i},
   {c:'AHCS',n:'Art Haus Costa del Sol',    l:'ahcs', rx:/costa\s*del\s*sol|\bAHCS\b/i},
   {c:'AHSB',n:'Art Haus San Benito',       l:'ahsb', dark:true, rx:/art\s*haus[^\n]{0,30}san\s*benito|\bAHSB\b/i},
-  {c:'CH',  n:'Citalá Haus',               l:'cit',  rx:/cital[aá]/i}
+  {c:'CH',  n:'Citalá Haus',               l:'cit',  rx:/cital[aá]/i},
+  {c:'CT',  n:'Century Tower',             l:'',     rx:/century\s*tower/i},
+  {c:'MDS', n:'Madreselva',                l:'',     rx:/madreselva/i}
 ];
 var TIPOS=[
   {v:'ccf',    n:'Comprobante de crédito fiscal (CCF)', id:'FAC', dte:1, hoja:'Facturas', asig:1},
@@ -10693,13 +10701,13 @@ var TIPOS=[
 ];
 /* qué campos se ven según el tipo */
 var VIS={
-  dte:   ['prov','nit','nrc','fecha','numdoc','codgen','numctrl','exento','total','base','iva','ret','asig','fisico','notas'],
+  dte:   ['prov','nit','nrc','fecha','numdoc','codgen','numctrl','exento','total','base','iva','ret','concepto','asig','fisico','notas'],
   quedan:['prov','fecha','numdoc','dtes','dtetxt','total','asig0','fisico','notas'],
   boleta:['prov','fecha','numdoc','cant','dtes','dtetxt0','total0','asig','notas'],
   est:   ['prov','fecha','numdoc','total','est','asig','fisico','notas'],
-  oferta:['prov','nit0','fecha','numdoc','total','base','iva','asig','fisico','notas'],
-  sol:   ['prov','nit0','fecha','numdoc','total','dtetxt','asig','fisico','notas'],
-  oc:    ['prov','nit0','fecha','numdoc','total','base','iva','dtetxt','asig','fisico','notas'],
+  oferta:['prov','nit0','fecha','numdoc','concepto','total','base','iva','asig','fisico','notas'],
+  sol:   ['prov','nit0','fecha','numdoc','concepto','total','qdn','dtetxt','nc','asig','fisico','notas'],
+  oc:    ['prov','nit0','fecha','numdoc','concepto','total','base','iva','dtetxt','asig','fisico','notas'],
   rem:   ['prov','fecha','numdoc','cant','total0','dtetxt0','asig','fisico','notas'],
   otro:  ['prov','nit0','fecha','numdoc','total','asig','fisico','notas']
 };
@@ -10753,7 +10761,8 @@ function two(n){return n===''||n==null||isNaN(n)?'':Number(n).toFixed(2);}
 function pad(n,l){n=String(n);while(n.length<l)n='0'+n;return n;}
 function todayStr(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1,2)+'-'+pad(d.getDate(),2);}
 function fdate(s){if(!/^\d{4}-\d{2}-\d{2}/.test(s||''))return s||'—';return s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4);}
-function normNit(s){var d=String(s||'').replace(/\D/g,'');if(d.length===14)return d.slice(0,4)+'-'+d.slice(4,10)+'-'+d.slice(10,13)+'-'+d.slice(13);if(d.length===9)return d.slice(0,8)+'-'+d.slice(8);return String(s||'').trim();}
+function normNit(s){var d=String(s||'').replace(/\D/g,'');if(d.length===14&&d.slice(0,4)==='0814')d='0614'+d.slice(4);   /* el OCR lee 0614 como 0814 */
+  if(d.length===14)return d.slice(0,4)+'-'+d.slice(4,10)+'-'+d.slice(10,13)+'-'+d.slice(13);if(d.length===9)return d.slice(0,8)+'-'+d.slice(8);return String(s||'').trim();}
 function nitKey(s){return String(s||'').replace(/\D/g,'');}
 function normNrc(s){var d=String(s||'').replace(/\D/g,'');if(d.length>=2&&d.length<=8)return d.slice(0,-1)+'-'+d.slice(-1);return String(s||'').trim();}
 function tipoOf(v){for(var i=0;i<TIPOS.length;i++)if(TIPOS[i].v===v)return TIPOS[i];return TIPOS[TIPOS.length-1];}
@@ -10802,7 +10811,7 @@ function tipoCorto(v){return tipoOf(v).n.split(' (')[0];}
 /* ---------- estado del formulario ---------- */
 var CUR=null;
 function newCur(tipo){return {proj:META.ult||'',projUser:false,tipo:tipo||'ccf',tipoManual:false,files:[],sel:0,src:{},editId:null,demo:false,cands:{nits:[],amts:[]},dteRaw:false,dtes:[],nrs:[],busy:false};}
-var FIELDS=['cant','prov','nit','nrc','fecha','numdoc','codgen','numctrl','total','base','iva','retiva','retrenta','retgar','liquido','eestado','frec','fapr','contrato','estim','partida','dtetxt','notas'];
+var FIELDS=['cant','prov','nit','nrc','fecha','numdoc','codgen','numctrl','total','base','iva','retiva','retrenta','retgar','liquido','eestado','frec','fapr','contrato','estim','partida','dtetxt','concepto','qdn','nc','notas'];
 
 function setField(name,val,src){
   var el=$('f-'+name);if(!el)return;
@@ -10872,7 +10881,7 @@ function renderPend(){
 
 /* ---------- proyectos, tipo, campos visibles ---------- */
 function renderProjects(){
-  $('projects').innerHTML=PROYECTOS.map(function(p){return '<button type="button" class="pc2" data-p="'+p.c+'" aria-pressed="'+(CUR.proj===p.c)+'" aria-label="'+esc(p.n)+'"><span class="lg'+(p.dark?' dark':'')+'"><img src="'+LOGOS[p.l]+'" alt=""></span>'+p.c+'</button>';}).join('');
+  $('projects').innerHTML=PROYECTOS.map(function(p){return '<button type="button" class="pc2" data-p="'+p.c+'" aria-pressed="'+(CUR.proj===p.c)+'" aria-label="'+esc(p.n)+'"><span class="lg'+(p.dark?' dark':'')+'">'+(LOGOS[p.l]?'<img src="'+LOGOS[p.l]+'" alt="">':'<b class="lgt">'+p.c+'</b>')+'</span>'+p.c+'</button>';}).join('');
   var m='';
   if(CUR.projDet&&CUR.projDet!==CUR.proj&&CUR.proj)m='<div class="status warn">El documento parece de <b>'+esc(projOf(CUR.projDet).n)+'</b>, pero tenés elegido <b>'+esc(projOf(CUR.proj).n)+'</b>. <button type="button" class="btn line sm" id="b-useproj" style="margin-top:6px">Usar '+CUR.projDet+'</button></div>';
   else if(!CUR.proj)m='<div class="status info">Elegí el proyecto al que pertenece.</div>';
@@ -10893,19 +10902,19 @@ function applyTipo(){
   var t=tipoOf(CUR.tipo),vk=visKey(CUR.tipo),V=VIS[vk];
   function has(k){return V.indexOf(k)>=0;}
   function show(id,on){var e=$(id);if(e)e.style.display=on?'':'none';}
-  ['prov','nit','nrc','fecha','numdoc','cant','codgen','numctrl','exento','total','base','iva','ret','est','asig','fisico','notas'].forEach(function(k){show('fw-'+k,has(k));});
+  ['prov','nit','nrc','fecha','numdoc','cant','codgen','numctrl','exento','total','base','iva','ret','est','asig','fisico','concepto','qdn','nc','notas'].forEach(function(k){show('fw-'+k,has(k));});
   show('fw-nrc',has('nit'));
   show('fw-dtes',has('dtes')||has('dtetxt'));show('fw-dtetxt',has('dtetxt'));
   show('b-pickdte',has('dtes'));show('dte-list',has('dtes'));
   show('fw-estim',vk==='dte');show('fw-partida',true);
   $('l-prov').textContent=lbl('prov',CUR.tipo);$('l-fecha').textContent=lbl('fecha',CUR.tipo);$('l-numdoc').textContent=t.num||'N.º de documento';
   $('l-total').textContent=lbl('total',CUR.tipo);$('l-contrato').textContent=lbl('contrato',CUR.tipo);
-  $('l-dtes').textContent=t.link==='one'?'DTE al que pertenece esta boleta':'DTE que cubre este quedan';
-  $('l-dtetxt').textContent=CUR.tipo==='quedan'?'N.º de DTE (si todavía no está registrado)':(CUR.tipo==='boleta'?'N.º de DTE':'DTE / referencia');
+  $('l-dtes').textContent=CUR.tipo==='sol'?'Documentos que se pagan':(t.link==='one'?'DTE al que pertenece esta boleta':'DTE que cubre este quedan');
+  $('l-dtetxt').textContent=CUR.tipo==='sol'?'N.º de DTE que se paga (varios: separados por coma)':CUR.tipo==='quedan'?'N.º de DTE (si todavía no está registrado)':(CUR.tipo==='boleta'?'N.º de DTE':'DTE / referencia');
   $('b-pickdte').textContent=t.link==='one'?'Elegir el DTE de esta boleta':'Elegir DTE ya registrados';
   $('wz-t').textContent=tipoCorto(CUR.tipo);$('tipo-sum').textContent='Tipo: '+t.n+' · cambiar';
   if(t.dte)$('fw-codgen').style.display='';
-  ['r-nit','r-fnum','r-bi','r-ep'].forEach(function(id){var r=$(id);if(!r)return;var n=0;Array.prototype.forEach.call(r.children,function(c){if(c.style.display!=='none')n++;});r.classList.toggle('one',n<2);});
+  ['r-nit','r-fnum','r-bi','r-ep','r-qdn'].forEach(function(id){var r=$(id);if(!r)return;var n=0;Array.prototype.forEach.call(r.children,function(c){if(c.style.display!=='none')n++;});r.classList.toggle('one',n<2);});
   renderDteLinks();
 }
 
@@ -11244,7 +11253,8 @@ function rebuildPage(p,c0){
     else{var kk=Math.min(1,2400/Math.max(c.width,c.height));w=document.createElement('canvas');w.width=Math.round(c.width*kk);w.height=Math.round(c.height*kk);w.getContext('2d').drawImage(c,0,0,w.width,w.height);}
     if(p.rot==null){p.rot=isSideways(w)?90:0;}
     if(p.rot)w=rotCanvas(w,p.rot);
-    if(!p.noskew){var sk=deskewAngle(w);p.skew=sk;if(sk)w=rotSmall(w,sk);}
+    if(!p.noskew){var sk=deskewAngle(w);if(Math.abs(sk)>=11.5)sk=0;   /* en el borde del rango casi siempre es una lectura mala */
+      p.skew=sk;if(sk)w=rotSmall(w,sk);}
     return toBlob(w,0.9).then(function(bb){p.base=bb;
       var f=filterCanvas(w,p.filter);
       return p.filter==='orig'?bb:toBlob(f,0.85);
@@ -11448,6 +11458,7 @@ function applyDte(j){
   CUR.exento=!(iva>0);$('c-exento').checked=CUR.exento;
   setField('total',two(tot),'dte');setField('base',two(base),'dte');setField('iva',two(iva),'dte');
   setField('retiva',rs.ivaRete1?two(rs.ivaRete1):'','dte');setField('retrenta',rs.reteRenta?two(rs.reteRenta):'','dte');
+  var cpt=(j.cuerpoDocumento||[]).map(function(x){return x&&x.descripcion;}).filter(Boolean).slice(0,3).join(' · ');if(cpt)setField('concepto',cpt.slice(0,110),'dte');
   CUR.dteRaw=true;vib();checkDupes();checkIva();
   say('<b>DTE leído del JSON.</b> Proveedor, NIT, fecha, número y montos cargados. Revisá y guardá.','ok');
   return true;
@@ -11491,6 +11502,7 @@ function parseOcr(text){
   }
   /* NIT (con o sin guiones). El primero del documento es el emisor; el segundo suele ser el receptor (nosotros) */
   var nits=[],re=/\b\d{4}[-\s]?\d{6}[-\s]?\d{3}[-\s]?\d\b/g;o.nitAll=[];o.nitPart=(text.match(/\b\d{13}\b/g)||[]);while((m=re.exec(text))){var n=normNit(m[0]);o.nitAll.push(n);if(nits.indexOf(n)<0)nits.push(n);}
+  nits=nits.map(function(n){return /^0814-/.test(n)?'0614-'+n.slice(5):n;});   /* el OCR lee 0614 como 0814 */
   o.cands.nits=nits;if(nits.length)o.nit=nits[0];
   /* NRC con o sin guion: el primero tras la palabra NRC */
   m=/N\.?\s?R\.?\s?C\.?\s*[:#]?\s*(\d{4,8}(?:\s?-\s?\d)?)/i.exec(text);if(m)o.nrc=m[1].replace(/\s/g,'');
@@ -11502,11 +11514,8 @@ function parseOcr(text){
   if(!d){var rd=/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\b/g;while(!d&&(m=rd.exec(text)))d=okd(+m[3],+m[2],+m[1]);}
   if(d)o.fecha=d;
   if(!o.numdoc&&(m=/(?:factura|ccf|comprobante|cr[eé]dito fiscal|documento|n[uú]mero|n[º°o]\.?)\s*(?:n[º°o]\.?|no\.?|#|:)?\s*[:#]?\s*0*(\d{2,10})\b/i.exec(text)))o.numdoc=m[1];
-  /* proveedor: etiqueta "NOMBRE/RAZÓN SOCIAL" (la primera es la del emisor) */
-  if((m=/NOMBRE\s*\/?\s*RAZ[OÓ]N\s*SOCIAL\s*[:.]?\s*([^\n]{4,90})/i.exec(up))){
-    var pv=m[1].split(/\||NOMBRE\s*\/?\s*RAZ/i)[0].replace(/\s+/g,' ').trim();if(pv.length>=4)o.prov=pv.slice(0,70);
-  }
-  if(!o.prov&&(m=/(?:denominaci[oó]n|raz[oó]n social|emisor)\s*[:.]\s*([^\n]{4,60})/i.exec(up)))o.prov=m[1].trim();
+  /* proveedor: el EMISOR (nunca nosotros, el receptor: Corporación Polaris) */
+  var en=emisorName(up);if(en)o.prov=en.slice(0,70);
   if(!o.prov){var bad=/factura|ticket|\bnit\b|\bnrc\b|fecha|\btel\b|cliente|total|\biva\b|hora|caja|documento|n[uú]mero|www|gracias|comprobante|cr[eé]dito|c[oó]digo|sello|direcci|electr[oó]nico|identificaci|boulevard|colonia/i;
     for(var i=0;i<Math.min(lines.length,12);i++){var l=lines[i].replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ0-9 &'.,\-]/g,' ').replace(/\s+/g,' ').trim(),L=(l.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/g)||[]).length;if(L>=5&&L>=l.length*0.6&&!bad.test(l)){o.prov=l.slice(0,60);break;}}}
   /* montos: cada frase tiene su prioridad; el "total a pagar" puede venir ya descontando retenciones, por eso va de último */
@@ -11525,6 +11534,7 @@ function parseOcr(text){
   });
   var all=moneyMatches(text).filter(function(x,i,a){return a.indexOf(x)===i;}).sort(function(a,b){return b-a;});
   o.cands.amts=all.slice(0,6);
+  var cpt=conceptoOf(text);if(cpt)o.concepto=cpt;
   var total=[found.op,found.cf,found.gen,found.pagar].filter(function(x){return x!=null;})[0];
   if(total!=null)o.total=total;
   if(found.iva!=null)o.iva=found.iva;
@@ -11564,7 +11574,7 @@ function mergeOcr(list){
 function okDate(y,mo,d){var dt=new Date(y,mo-1,d);if(isNaN(dt)||dt.getFullYear()!==+y||dt.getMonth()!==mo-1||dt.getDate()!==+d)return null;if(y<2015||dt>new Date(Date.now()+864e5*2))return null;return y+'-'+pad(mo,2)+'-'+pad(d,2);}
 function datesIn(text){var out=[],re=/\b(\d{1,2})\s?[\/\-.]\s?(\d{1,2})\s?[\/\-.]\s?(\d{4}|\d{2})\b/g,m;
   while((m=re.exec(text))){var y=+m[3];if(y<100)y+=2000;var d=okDate(y,+m[2],+m[1]);
-    if(!d&&y>=2030&&y<2100)d=okDate(2020+(y%10),+m[2],+m[1]);   /* el OCR confunde 2 con 7 */
+    if(!d&&y>=2015){var cy=new Date().getFullYear();d=okDate(cy,+m[2],+m[1])||okDate(cy-1,+m[2],+m[1]);}   /* año mal leído (2076, 2028…): se usa el actual */
     if(d)out.push({iso:d,idx:m.index});}return out;}
 function detectProj(text){
   var best=null,bn=0,tie=false;
@@ -11582,8 +11592,8 @@ function knownProv(text){
 }
 var EXCL_CO=/polaris|haus|park\s*city|corporaci[oó]n/i;
 function looksName(n){var L=(n.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/g)||[]).length,w=n.split(/\s+/).filter(function(x){return x.replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ]/g,'').length>=3;});return L>=5&&L>=n.length*0.72&&w.some(function(x){return x.replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ]/g,'').length>=6;});}
-function cleanName(n){var t=n.replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ0-9.&' ,-]+/g,' ').split(/\s+/).filter(Boolean);
-  while(t.length>1&&(t[0].replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ]/g,'').length<=2||/^(nombre|del|proveedor|pr|de)$/i.test(t[0])))t.shift();return t.join(' ').replace(/^[.,-]+/,'');}
+function cleanName(n){n=String(n).replace(/^\W*(raz[oó]n\s*)?social\W*/i,'');var t=n.replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ0-9.&' ,-]+/g,' ').split(/\s+/).filter(Boolean);
+  while(t.length>1&&(t[0].replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ]/g,'').length<=2||/^(nombre|del|proveedor|pr|de)$/i.test(t[0])))t.shift();return t.join(' ').replace(/^[.,-]+/,'').replace(/^\W*(raz[oó]n\s*)?social\W*/i,'');}
 function firstCompany(text){
   var re=/([A-ZÁÉÍÓÚÑ0-9][A-Za-zÁÉÍÓÚÑáéíóúñ0-9.&' -]{3,50}?),?\s+[S5]\.?\s?A\.?\s*(?:DE|de|De)\s*C\.?\s?[VvY]\.?/g,m;
   while((m=re.exec(text))){var n=cleanName(m[1]);if(n.length>=4&&!EXCL_CO.test(n)&&looksName(n)){return n+', S.A. de C.V.';}}
@@ -11602,6 +11612,88 @@ function zDate(s){
   var t=String(s||'').replace(/\D/g,'');if(t.length===8){var y=+t.slice(4),iso=okDate(y,+t.slice(2,4),+t.slice(0,2));if(iso)return iso;}
   return null;
 }
+
+/* ---------- helpers nuevos: proveedor emisor, concepto, fechas con mes en letras ---------- */
+var MESES={enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,julio:7,agosto:8,septiembre:9,setiembre:9,octubre:10,noviembre:11,diciembre:12};
+function monthDates(text){
+  var out=[],re=/\b(\d{1,2})\s*(?:de\s+)?(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\s*(?:de\s+|del\s+|,)?\s*(20\d{2}|20\d\S?|\d{2})?/gi,m;
+  while((m=re.exec(text))){
+    var y=m[3]?String(m[3]):'';
+    if(/^20\d\d$/.test(y))y=+y;else y=new Date().getFullYear();   /* año ilegible: se asume el año actual */
+    var d=okDate(y,MESES[m[2].toLowerCase()],+m[1]);if(d)out.push({iso:d,idx:m.index});
+  }
+  return out;
+}
+var RECEPTOR=/polaris/i;
+function emisorName(text){
+  var cands=[],pieces=text.split(/N[o0]m[bt]re\s*[o0]?\s*\/?\s*raz[oó]n\s*soci[a-z]{1,3}/i),i;
+  for(i=1;i<pieces.length;i++){
+    var t=pieces[i].replace(/^[\s:.\-–—|]+/,'').split(/\n/)[0].split(/\s{2,}|\|/)[0];
+    var n=cleanName(t.replace(/\s+(NIT|NRC|NEC|Actividad)\b.*$/i,''));
+    if(n.length>=4&&looksName(n)&&!RECEPTOR.test(n)&&!/^(emisor|receptor)/i.test(n))cands.push(n);
+  }
+  var re=/([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ.&' -]{5,60}?)[,.]?\s+SOCIEDAD\s+AN[OÓ]NIMA(?:\s+DE\s+CAPITAL(?:\s+VARIABLE)?)?/g,m;
+  while((m=re.exec(text))){var n2=cleanName(m[0]).replace(/\.\s+SOCIEDAD/,', SOCIEDAD');if(!RECEPTOR.test(n2)&&looksName(n2))cands.push(n2);}
+  if(cands.length)return cands.sort(function(a,b){return b.length-a.length;})[0];
+  var fc=firstCompany(text);return fc&&!RECEPTOR.test(fc)?fc:null;
+}
+/* renglones del detalle (lo que se compra / se oferta) */
+function conceptoOf(text){
+  var lines=text.split(/\r?\n/),on=false,out=[],i;
+  for(i=0;i<lines.length&&out.length<2;i++){
+    var l=lines[i];
+    if(!on){if(/DESCRIPCI[OÓ]N|CONCEPTO/i.test(l)&&!/valor\s*en\s*letras/i.test(l))on=true;continue;}
+    if(/sub\s*-?\s*total|\bSUMA\b|valor\s*en\s*letras|^\W*(IVA|TOTAL)\b|observaciones/i.test(l))break;
+    var c=l.replace(/\$?\s*\d[\d.,]*\d\b/g,' ').replace(/[|_]+/g,' ').replace(/\b(unidad|otros?|mt2|und|cj|pza|c\/u)\b/gi,' ').replace(/^[\s\d.,-]+/,'').replace(/\s+/g,' ').trim();
+    var L=(c.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/g)||[]).length;
+    if(L>=10&&L>=c.length*0.7&&!/PRECIO|CANTIDAD|UNIDAD|DESCUENTO|VENTAS|REFERENCIA|DESCRIPCI|POR ITEM/i.test(c))out.push(c);
+  }
+  return out.join(' · ').slice(0,110);
+}
+function parseOferta(text){
+  var o={},T=text.replace(/[ \t]+/g,' '),m;
+  var ds=monthDates(T).concat(datesIn(T)).sort(function(a,b){return a.idx-b.idx;});if(ds.length)o.fecha=ds[0].iso;
+  o.prov=emisorName(T)||null;
+  var tot=null,sub=null,iva=null;
+  T.split(/\r?\n/).forEach(function(l){var v=moneyMatches(l),last=v.length?v[v.length-1]:null;if(last==null)return;
+    if(/sub\s*-?\s*total/i.test(l))sub=last;
+    else if(/\bTOTAL\b/i.test(l)&&!/precio|unitario|cantidad|descripci/i.test(l))tot=Math.max(tot||0,last);
+    else if(/\bIVA\b/i.test(l))iva=last;});
+  if(tot!=null){
+    o.total=tot;
+    if(iva!=null||sub!=null){   /* el total incluye IVA: se recalcula el IVA (el "$" a veces se lee como 5) */
+      var ivaC=r2(tot-tot/1.13);
+      if(sub!=null&&Math.abs(sub+ivaC-tot)<0.03){o.base=sub;o.iva=ivaC;}else{o.base=r2(tot/1.13);o.iva=ivaC;}
+    }else{o.base=tot;o.iva=0;o.ivaSin=true;}
+  }
+  var c=conceptoOf(T);if(c)o.concepto=c;
+  return o;
+}
+function parseRefs(s){
+  var o={dtes:[],ncs:[]},t=String(s||'').replace(/\s+/g,' '),m;
+  if((m=/(\d{3,6})\s*[\/\\|Il]{1,3}\s*(?=\W*(?:DTE|NC|D\s?T\s?E))/i.exec(t))||(m=/(\d{3,6})\D{0,6}(?=DTE)/i.exec(t)))o.qdn=m[1];
+  var re=/D\s?T\s?E\s*[:.\-]?\s*0*(\d{1,9})/gi;while((m=re.exec(t)))if(o.dtes.indexOf(m[1])<0)o.dtes.push(m[1]);
+  re=/\bN\.?\s?C\.?\s*[:.\-]?\s*0*(\d{1,9})/gi;while((m=re.exec(t)))if(o.ncs.indexOf(m[1])<0)o.ncs.push(m[1]);
+  return o;
+}
+function parseSol(text){
+  var o={},T=text.replace(/[ \t]+/g,' '),m;
+  if((m=/Fecha\s*de\s*la\s*solicitud\W{0,4}(\d{1,2}\s?[\/\-.]\s?\d{1,2}\s?[\/\-.]\s?\d{2,4})/i.exec(T))){var d=datesIn(m[1]);if(d.length)o.fecha=d[0].iso;}
+  if(!o.fecha){var ds=datesIn(T);if(ds.length)o.fecha=ds[0].iso;}
+  if((m=/Nombre\s*del\s*proveedor\W{0,4}([^\n]{3,90})/i.exec(T))){var n=cleanName(m[1].replace(/\s{2,}.*$/,''));if(looksName(n)&&!RECEPTOR.test(n)&&!/DETALLE|CLASIFICACI|BIEN|SERVICIO|Fecha|proyecto/i.test(n))o.prov=n.slice(0,70);}
+  if(!o.prov)o.prov=emisorName(T)||null;
+  if((m=/Concepto\s*del\s*bien\s*o\s*servicio\W{0,4}([^\n]{3,200})/i.exec(T))){var c=m[1].replace(/\s+/g,' ').trim();if((c.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/g)||[]).length>=8)o.concepto=c.slice(0,110);}
+  if((m=/Monto\s*Total\s*a\s*Pagar\W{0,6}\$?\s*(\d[\d.,]*)/i.exec(T))){var v=num(m[1]);if(v>0){o.total=v;
+    if(/NO\s*INCLUYE/i.test(T)){o.base=v;o.iva=r2(v*0.13);o.total=r2(v*1.13);o.ivaSin=true;}
+    else if(/INCLUYE\s*IVA/i.test(T)){o.base=r2(v/1.13);o.iva=r2(v-v/1.13);}}}
+  if(!o.concepto&&(m=/\b(Suministro|Servicio|Compra|Pago|Mantenimiento|Alquiler|Instalaci[oó]n|Reparaci[oó]n)\b[^\n]{8,140}/i.exec(T)))o.concepto=m[0].replace(/\s+/g,' ').replace(/\s+\W?$/,'').slice(0,110);
+  var rm=/Referencia\s*de\s*factura\W{0,4}([^\n]{0,140})/i.exec(T),ref=rm?rm[1]:'';
+  var R=parseRefs(ref);if(!R.qdn&&!R.dtes.length){var any=/(\d{3,6})\s*[\/\\|Il]{1,3}\s*(DTE[^\n]{0,80})/i.exec(T);if(any)R=parseRefs(any[0]);}
+  if(R.qdn)o.qdn=R.qdn;if(R.dtes.length)o.dtetxt=R.dtes.join(', ');if(R.ncs.length)o.nc=R.ncs.map(function(x){return 'NC '+x;}).join(', ');
+  if((m=/\bCom[ea]n\w{2,8}\W{0,4}([^\n]{6,200})/i.exec(T))){var cm=m[1].replace(/\s+/g,' ').trim();if((cm.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/g)||[]).length>=6)o.notas=cm;}
+  return o;
+}
+
 function parseBoleta(text){
   var o={},T=text.replace(/[ \t]+/g,' '),m,Z={};
   T.split(/\n/).forEach(function(l){var z=/^@@(\w+) (.*)$/.exec(l);if(z)Z[z[1]]=(Z[z[1]]?Z[z[1]]+' | ':'')+z[2];});
@@ -11654,6 +11746,8 @@ function parseOc(text){
   var all=moneyMatches(T),cnt=function(x){return all.filter(function(a){return Math.abs(a-x)<0.005;}).length;};
   var pick=null;if(sub!=null&&tot!=null&&Math.abs(sub-tot)>0.004)pick=(cnt(sub)>=cnt(tot)&&!iva)?sub:tot;else pick=tot!=null?tot:sub;
   if(pick!=null){o.total=pick;if(!iva){o.base=pick;o.iva=0;o.ivaSin=true;}else{o.iva=iva;o.base=r2(pick-iva);}}
+  if((m=/Observaciones\W{0,4}([^\n]{6,200})/i.exec(T))){var ob=m[1].replace(/\s+/g,' ').trim();if((ob.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/g)||[]).length>=10)o.concepto=ob.slice(0,110);}
+  if(!o.concepto){var c0=conceptoOf(T);if(c0)o.concepto=c0;}
   return o;
 }
 function parseEst(text){
@@ -11686,7 +11780,7 @@ function parseEst(text){
   if(rg!=null&&rg>0)o.retgar=rg;if(lq!=null)o.liquido=lq;
   return o;
 }
-var FORM={boleta:parseBoleta,quedan:parseQuedan,oc:parseOc,oferta:parseOc,sol:parseOc,est:parseEst,rem:parseBoleta};
+var FORM={boleta:parseBoleta,quedan:parseQuedan,oc:parseOc,oferta:parseOferta,sol:parseSol,est:parseEst,rem:parseBoleta};
 function guessTipo(t){
   var u=t.toUpperCase().replace(/[ \t]+/g,' ');
   if(/DTE\W{0,2}(01|03|05|14)\W{0,2}[A-Z0-9]{8}\W{0,2}\d{15}/.test(u))return 'dte';
@@ -11709,16 +11803,17 @@ function loadOcr(){
     return loadScriptOnce('ocr/tesseract.min.js').then(function(){OCRBASE=new URL('ocr/',location.href).href;return OCRBASE;},function(){throw new Error('OCR no instalado: faltan los archivos del lector junto al index.html.');});
   });
 }
-function quickRead(worker,c){return worker.setParameters({tessedit_pageseg_mode:'6'}).then(function(){return worker.recognize(ocrNorm(c));}).then(function(r){return {c:(r&&r.data&&r.data.confidence)||0};});}
-/* si la lectura rápida sale mala, prueba la página girada 180°, 90° y 270° y se queda con la que lee mejor */
+var COMUN=/\b(de|la|el|en|y|por|para|con|del|los|las|total|fecha|nombre|numero|número|documento|cantidad|precio|iva|orden|compra|factura|proveedor|descripci[oó]n|solicitud|pago)\b/gi;
+function quickRead(worker,c){return worker.setParameters({tessedit_pageseg_mode:'6'}).then(function(){return worker.recognize(ocrNorm(c));}).then(function(r){var t=(r&&r.data&&r.data.text)||'';return {c:(r&&r.data&&r.data.confidence)||0,h:(t.match(COMUN)||[]).length};});}
 function fixOrient(worker,p){
   var src=p.base||p.blob;
   return blobCanvas(src,1000).then(function(c0){
     return quickRead(worker,c0).then(function(r0){
-      if(r0.c>=40)return 0;
-      var tries=[180,90,270],best={c:r0.c,deg:0},i=0;
+      window.__ori=['0:'+r0.h+'/'+Math.round(r0.c)];
+      if(r0.h>=3||r0.c>=50)return 0;   /* ya se lee algo: palabras comunes en español */
+      var tries=[180,90,270],best={h:r0.h,c:r0.c,deg:0},i=0;
       return (function nx(){if(i>=tries.length)return Promise.resolve(best.deg);var d=tries[i++];
-        return quickRead(worker,rotCanvas(c0,d)).then(function(r){if(r.c>best.c+6)best={c:r.c,deg:d};if(best.c>=62||(i>=1&&best.c>=30))return best.deg;return nx();});})();
+        return quickRead(worker,rotCanvas(c0,d)).then(function(r){window.__ori.push(d+':'+r.h+'/'+Math.round(r.c));if(r.h>best.h+3)best={h:r.h,c:r.c,deg:d};if(best.h>=8)return best.deg;return nx();});})();
     });
   }).then(function(deg){
     if(!deg)return;
@@ -11763,7 +11858,7 @@ function boletaZones(worker,c,r){
 }
 /* la 2.ª pasada solo se hace si la 1.ª no alcanzó para llenar lo principal (ahorra ~8 s) */
 function enoughA(texts,tipo){
-  try{var g=guessTipo(texts.join('\n'))||tipo,need={boleta:['numdoc','fecha','cant'],rem:['numdoc','fecha','cant'],est:['total','liquido','fecha'],oc:['total','numdoc','fecha'],oferta:['total','numdoc','fecha'],sol:['total','numdoc','fecha']}[g];
+  try{var g=guessTipo(texts.join('\n'))||tipo,need={boleta:['numdoc','fecha','cant'],rem:['numdoc','fecha','cant'],est:['total','liquido','fecha'],oc:['total','numdoc','fecha'],oferta:['total','fecha','prov'],sol:['total','fecha','prov']}[g];
     if(!need)return false;var o=mergeForm(texts,g);return need.every(function(k){return o[k]!=null&&o[k]!=='';});}catch(e){return false;}
 }
 function runOcr(){
@@ -11796,7 +11891,7 @@ function runOcr(){
     });
     return chain;
   }).then(function(){return worker.terminate().catch(function(){});}).then(function(){
-    window.__ocrtxt=texts.join('\n=====\n');window.__ocrinfo='v7 · tipo '+cur.tipo+' · páginas '+imgs.length+' · '+(window.__zdbg||'sin tabla');window.__zdbg='';
+    window.__ocrtxt=texts.join('\n=====\n');window.__ocrinfo='v9 · orient '+(window.__ori||[]).join(' ')+' · tipo '+cur.tipo+' · páginas '+imgs.length+' · '+(window.__zdbg||'sin tabla');window.__zdbg='';
     if(CUR!==cur)return;
     renderPages();$('b-dbg').hidden=false;
     var n=applyOcr(texts);
@@ -11829,7 +11924,7 @@ function applyOcr(texts){
   if(vk==='dte'||!FORM[CUR.tipo]){
     o=mergeOcr(texts);
     if(vk==='dte')CUR.nrs=nrsFromText(all);
-    ['prov','nit','fecha','numdoc','codgen','numctrl'].forEach(function(k){if(putOcr(k,o[k]))n++;});
+    ['prov','nit','fecha','numdoc','codgen','numctrl','concepto'].forEach(function(k){if(putOcr(k,o[k]))n++;});
     if(putOcr('nrc',o.nrc?normNrc(o.nrc):''))n++;
     if(putOcr('retiva',o.retiva,two))n++;if(putOcr('retrenta',o.retrenta,two))n++;
     if(o.total!=null&&putOcr('total',o.total,two)){n++;
@@ -11839,9 +11934,9 @@ function applyOcr(texts){
       else fromTotal('calc');}
   }else{
     o=mergeForm(texts,CUR.tipo);
-    ['prov','fecha','numdoc','cant','dtetxt'].forEach(function(k){if(putOcr(k,o[k]))n++;});
+    ['prov','fecha','numdoc','cant','dtetxt','concepto','qdn','nc','notas'].forEach(function(k){if(putOcr(k,o[k]))n++;});
     if(o.total!=null&&putOcr('total',o.total,two)){n++;
-      if(vk==='oc'||vk==='oferta'){if(o.base!=null){setField('base',two(o.base),'ocr');setField('iva',two(o.iva||0),'ocr');n+=2;checkIva();}}
+      if(vk==='oc'||vk==='oferta'||vk==='sol'){if(o.base!=null){setField('base',two(o.base),'ocr');setField('iva',two(o.iva||0),'ocr');n+=2;checkIva();}}
     }
     if(vk==='est'){if(putOcr('retgar',o.retgar,two))n++;if(putOcr('liquido',o.liquido,two))n++;
       if(!$('f-frec').value)setField('frec',todayStr(),'manual');}
@@ -11941,7 +12036,7 @@ function saveRec(force,again){
         id:old?old.id:nextId(CUR.proj,CUR.tipo),proj:CUR.proj,tipo:CUR.tipo,
         codgen:f.codgen.toUpperCase(),numctrl:f.numctrl,numdoc:f.numdoc,fecha:f.fecha,prov:f.prov,nit:normNit(f.nit),nrc:f.nrc,
         base:n2(f.base),iva:n2(f.iva),total:isNaN(total)?0:r2(total),retiva:n2(f.retiva),retrenta:n2(f.retrenta),retgar:n2(f.retgar),liquido:n2(f.liquido),
-        exento:exento(),cant:f.cant,contrato:f.contrato,estim:f.estim,partida:f.partida,notas:f.notas,dtetxt:f.dtetxt,
+        exento:exento(),cant:f.cant,contrato:f.contrato,estim:f.estim,partida:f.partida,notas:f.notas,dtetxt:f.dtetxt,concepto:f.concepto,qdn:f.qdn,nc:f.nc,
         dtes:(CUR.dtes||[]).slice(),nrs:(CUR.nrs||[]).slice(),eestado:eest,frec:est?f.frec:'',fapr:fapr,
         fisico:fis?(old&&old.fisico?old.fisico:{fecha:todayStr(),quien:q}):null,
         quien:old?old.quien:q,creado:old?old.creado:now,mod:now,src:Object.assign({},CUR.src),estado:'registrado',
@@ -12057,7 +12152,7 @@ function openRec(id){
   rows.push([r.tipo==='est'?'Total estimado':(r.tipo==='quedan'?'Monto del quedan':'Total'),r.total?usd(r.total):'']);
   rows.push(['Retención IVA',r.retiva?usd(r.retiva):''],['Retención renta',r.retrenta?usd(r.retrenta):''],['Retención garantía',r.retgar?usd(r.retgar):''],['Líquido a recibir',r.liquido?usd(r.liquido):'']);
   if(r.tipo==='est')rows.push(['Estado',r.eestado||'Recibida'],['Recibida',fdate(r.frec)],['Aprobada',r.fapr?fdate(r.fapr):'Pendiente']);
-  rows.push(['Cantidad',r.cant],['DTE (referencia)',r.dtetxt],['Contrato / OC',r.contrato||(t.asig?'Sin asignar':'')],['Estimación',r.estim],['Partida',r.partida],['Físico',t.dte||r.fisico?(r.fisico?'Recibido '+fdate(r.fisico.fecha)+' ('+r.fisico.quien+')':'Pendiente'):''],['Notas',r.notas],['Registró',r.quien+' · '+new Date(r.creado).toLocaleString('es-SV')],['Origen de datos',srcSummary(r)]);
+  rows.push(['Concepto',r.concepto],['Cantidad',r.cant],['N.º de quedan',r.qdn],['Notas de crédito',r.nc],['DTE (referencia)',r.dtetxt],['Contrato / OC',r.contrato||(t.asig?'Sin asignar':'')],['Estimación',r.estim],['Partida',r.partida],['Físico',t.dte||r.fisico?(r.fisico?'Recibido '+fdate(r.fisico.fecha)+' ('+r.fisico.quien+')':'Pendiente'):''],['Notas',r.notas],['Registró',r.quien+' · '+new Date(r.creado).toLocaleString('es-SV')],['Origen de datos',srcSummary(r)]);
   var h='<dl class="kv">'+rows.filter(function(x){return x[1];}).map(function(x){return '<dt>'+x[0]+'</dt><dd>'+esc(x[1])+'</dd>';}).join('')+'</dl>';
   if(r.estado==='anulado')h='<div class="alertbox bad"><b>Anulado.</b> '+esc(r.motivo||'')+'</div>'+h;
   if(dd.length){var s=0;dd.forEach(function(x){s+=(tipoOf(x.tipo).signo||1)*(x.total||0);});
@@ -12168,11 +12263,11 @@ function saveBlob(b,name){var a=document.createElement('a');a.href=URL.createObj
 /* ---------- Excel por hojas ---------- */
 var C_PIE=[['Fisico_recibido','_fis'],['Fecha_fisico','_fisf'],['Registrado_por','quien'],['Fecha_registro','_creado'],['Origen_datos','_src'],['Alerta','_alerta'],['Estado','_estado'],['Notas','notas'],['Archivo','_arch']];
 var SHEETS=[
- {n:'Facturas',h:'Facturas',cols:[['ID_registro','id'],['Proyecto','proj'],['Tipo_documento','_tipo'],['Codigo_generacion','codgen'],['Numero_control','numctrl'],['Numero_documento','numdoc'],['Fecha_emision','fecha'],['Proveedor','prov'],['NIT','nit'],['NRC','nrc'],['Base_sin_IVA','base','n'],['IVA_13','iva','n'],['Total_con_IVA','total','n'],['Retencion_IVA','retiva','n'],['Retencion_renta','retrenta','n'],['Signo','_signo','n'],['ID_contrato_OC','contrato'],['N_estimacion','estim'],['Partida','partida'],['Quedan_N','_qdn'],['Boletas_escaneadas','_bols','n'],['Boletas_anotadas_en_DTE','_nrs','n']].concat(C_PIE)},
+ {n:'Facturas',h:'Facturas',cols:[['ID_registro','id'],['Proyecto','proj'],['Tipo_documento','_tipo'],['Codigo_generacion','codgen'],['Numero_control','numctrl'],['Numero_documento','numdoc'],['Fecha_emision','fecha'],['Proveedor','prov'],['Concepto','concepto'],['NIT','nit'],['NRC','nrc'],['Base_sin_IVA','base','n'],['IVA_13','iva','n'],['Total_con_IVA','total','n'],['Retencion_IVA','retiva','n'],['Retencion_renta','retrenta','n'],['Signo','_signo','n'],['ID_contrato_OC','contrato'],['N_estimacion','estim'],['Partida','partida'],['Quedan_N','_qdn'],['Boletas_escaneadas','_bols','n'],['Boletas_anotadas_en_DTE','_nrs','n']].concat(C_PIE)},
  {n:'Quedan',h:'Quedan',cols:[['ID_registro','id'],['Proyecto','proj'],['N_quedan','numdoc'],['Fecha_emision','fecha'],['Proveedor','prov'],['Monto_USD','total','n'],['DTE_N','_dten'],['DTE_ID_registro','_dteid'],['DTE_sin_registrar','dtetxt']].concat(C_PIE)},
  {n:'Boletas',h:'Boletas',cols:[['ID_registro','id'],['Proyecto','proj'],['N_boleta','numdoc'],['Fecha','fecha'],['Proveedor','prov'],['Cantidad','cant'],['m3','_m3','n'],['DTE_N','_dten'],['DTE_ID_registro','_dteid'],['ID_contrato_OC','contrato'],['Partida','partida']].concat(C_PIE)},
  {n:'Estimaciones',h:'Estimaciones',cols:[['ID_registro','id'],['Proyecto','proj'],['N_estimacion','numdoc'],['Contratista','prov'],['Fecha_estimacion','fecha'],['Fecha_recibida','frec'],['Fecha_aprobada','fapr'],['Estado_estimacion','eestado'],['Total_estimado_con_IVA','total','n'],['Retencion_garantia','retgar','n'],['Liquido_a_recibir','liquido','n'],['ID_contrato','contrato'],['Partida','partida']].concat(C_PIE)},
- {n:'Compromisos',h:'Compromisos',cols:[['ID_registro','id'],['Proyecto','proj'],['Tipo_documento','_tipo'],['Numero_documento','numdoc'],['Fecha','fecha'],['Proveedor','prov'],['Base_sin_IVA','base','n'],['IVA_13','iva','n'],['Total','total','n'],['DTE_referencia','dtetxt'],['ID_contrato','contrato'],['Partida','partida']].concat(C_PIE)},
+ {n:'Compromisos',h:'Compromisos',cols:[['ID_registro','id'],['Proyecto','proj'],['Tipo_documento','_tipo'],['Numero_documento','numdoc'],['Fecha','fecha'],['Proveedor','prov'],['Concepto','concepto'],['Base_sin_IVA','base','n'],['IVA_13','iva','n'],['Total','total','n'],['N_quedan','qdn'],['DTE_referencia','dtetxt'],['Notas_credito','nc'],['ID_contrato','contrato'],['Partida','partida']].concat(C_PIE)},
  {n:'Remisiones',h:'Remisiones',cols:[['ID_registro','id'],['Proyecto','proj'],['N_remision','numdoc'],['Fecha','fecha'],['Proveedor','prov'],['Cantidad','cant'],['ID_contrato_OC','contrato'],['Partida','partida']].concat(C_PIE)},
  {n:'Otros',h:'Otros',cols:[['ID_registro','id'],['Proyecto','proj'],['Tipo_documento','_tipo'],['Numero_documento','numdoc'],['Fecha','fecha'],['Proveedor','prov'],['Total','total','n'],['ID_contrato','contrato'],['Partida','partida']].concat(C_PIE)}
 ];
