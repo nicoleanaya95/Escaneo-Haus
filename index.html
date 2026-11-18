@@ -212,6 +212,8 @@ dl.kv dt{color:var(--mute);font-weight:600}dl.kv dd{margin:0;word-break:break-wo
       <div class="field"><div class="lbl"><label for="f-numdoc">N.º de documento</label><span class="tag" id="t-numdoc" hidden></span></div>
         <input type="text" id="f-numdoc" autocomplete="off" placeholder="Ej. 1448"></div>
     </div>
+    <div class="field" id="fw-cant"><div class="lbl"><label for="f-cant">Cantidad y resistencia</label></div>
+      <input type="text" id="f-cant" autocomplete="off" placeholder="Ej. 6.5 m³ · f'c 280 kg/cm²"></div>
     <div class="field" id="fw-codgen"><div class="lbl"><label for="f-codgen">Código de generación (DTE)</label><span class="tag" id="t-codgen" hidden></span></div>
       <input type="text" id="f-codgen" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"></div>
     <div class="field" id="fw-numctrl"><div class="lbl"><label for="f-numctrl">N.º de control (DTE)</label><span class="tag" id="t-numctrl" hidden></span></div>
@@ -10425,11 +10427,15 @@ var TIPOS=[
   {v:'factura',n:'Factura consumidor final',            id:'FAC', dte:1},
   {v:'sujeto', n:'Factura sujeto excluido',             id:'FAC', dte:1},
   {v:'nc',     n:'Nota de crédito',                     id:'NC',  dte:1, signo:-1},
-  {v:'oc',     n:'Orden de compra',                     id:'OC'},
-  {v:'est',    n:'Estimación',                          id:'EST'},
+  {v:'quedan', n:'Quedan (constancia de documentos)',     id:'QDN', num:'N.º de quedan'},
+  {v:'boleta', n:'Boleta de concreto / despacho',        id:'BOL', num:'N.º de boleta', cant:1, sm:1},
+  {v:'contrato',n:'Contrato',                            id:'CON', num:'N.º de contrato'},
+  {v:'odc',    n:'Orden de cambio (ODC)',                id:'ODC', num:'N.º de ODC'},
+  {v:'oc',     n:'Orden de compra',                     id:'OC',  num:'N.º de OC'},
+  {v:'est',    n:'Estimación',                          id:'EST', num:'N.º de estimación'},
   {v:'pago',   n:'Comprobante de pago / transferencia', id:'PAG'},
-  {v:'rem',    n:'Remisión / nota de recepción',        id:'REM'},
-  {v:'otro',   n:'Otro documento',                      id:'DOC'}
+  {v:'rem',    n:'Remisión / nota de recepción',        id:'REM', num:'N.º de remisión', cant:1, sm:1},
+  {v:'otro',   n:'Otro documento',                      id:'DOC', sm:1}
 ];
 var DTE_TIPO={'01':'factura','03':'ccf','05':'nc','14':'sujeto'};
 var IVA=0.13;
@@ -10490,7 +10496,7 @@ var META={quien:'',ult:'',dev:''};
 /* ---------- estado del formulario ---------- */
 var CUR=null;
 function newCur(){return {proj:CUR&&CUR.proj||META.ult||'',tipo:CUR&&CUR.tipo||'ccf',files:[],src:{},editId:null,demo:false,cands:{nits:[],amts:[]},dteRaw:false,hist:[]};}
-var FIELDS=['prov','nit','nrc','fecha','numdoc','codgen','numctrl','total','base','iva','retiva','retrenta','contrato','estim','partida','notas'];
+var FIELDS=['cant','prov','nit','nrc','fecha','numdoc','codgen','numctrl','total','base','iva','retiva','retrenta','contrato','estim','partida','notas'];
 
 function setField(name,val,src){
   var el=$('f-'+name);if(!el)return;
@@ -10528,7 +10534,7 @@ function renderTipos(){
   $('f-tipo').value=CUR.tipo;
   applyTipo();
 }
-function applyTipo(){var t=tipoOf(CUR.tipo);$('fw-codgen').style.display=t.dte?'':'none';$('fw-numctrl').style.display=t.dte?'':'none';}
+function applyTipo(){var t=tipoOf(CUR.tipo);$('fw-cant').style.display=t.cant?'':'none';document.querySelector('label[for=f-numdoc]').textContent=t.num||'N.º de documento';$('fw-codgen').style.display=t.dte?'':'none';$('fw-numctrl').style.display=t.dte?'':'none';}
 
 /* ---------- archivos / imágenes ---------- */
 function loadBitmap(file){
@@ -10551,7 +10557,22 @@ function docFilter(c){
   for(i=0;i<p.length;i+=4){g=p[i]*0.299+p[i+1]*0.587+p[i+2]*0.114;g=(g-lo)*k;g=g<0?0:g>255?255:g;p[i]=p[i+1]=p[i+2]=g;}
   cx.putImageData(d,0,0);return c;
 }
-function blobCanvas(blob){return loadBitmap(blob).then(function(b){return drawScaled(b,2400);});}
+function blobCanvas(blob,L){return loadBitmap(blob).then(function(b){
+  if(!L)return drawScaled(b,3000);
+  var k=L/Math.max(bw(b),bh(b)),c=document.createElement('canvas');c.width=Math.round(bw(b)*k);c.height=Math.round(bh(b)*k);
+  var x=c.getContext('2d');x.imageSmoothingQuality='high';x.drawImage(b,0,0,c.width,c.height);return c;});}
+/* para OCR: normaliza el fondo con la media local (quita sombras y brillo desigual) */
+function ocrNorm(c){
+  var w=c.width,h=c.height,x=c.getContext('2d'),d=x.getImageData(0,0,w,h),p=d.data,g=new Float32Array(w*h),i,j;
+  for(i=0,j=0;i<p.length;i+=4,j++)g[j]=p[i]*0.299+p[i+1]*0.587+p[i+2]*0.114;
+  var I=new Float64Array((w+1)*(h+1)),yy,xx,r;
+  for(yy=0;yy<h;yy++){r=0;for(xx=0;xx<w;xx++){r+=g[yy*w+xx];I[(yy+1)*(w+1)+xx+1]=I[yy*(w+1)+xx+1]+r;}}
+  var R=Math.max(12,Math.round(Math.max(w,h)/105));
+  for(yy=0;yy<h;yy++){var y0=Math.max(0,yy-R),y1=Math.min(h,yy+R+1);for(xx=0;xx<w;xx++){var x0=Math.max(0,xx-R),x1=Math.min(w,xx+R+1);
+    var m=(I[y1*(w+1)+x1]-I[y0*(w+1)+x1]-I[y1*(w+1)+x0]+I[y0*(w+1)+x0])/((y1-y0)*(x1-x0));
+    var v=g[yy*w+xx]/(m+1)*235;v=v>255?255:v;j=(yy*w+xx)*4;p[j]=p[j+1]=p[j+2]=v;}}
+  x.putImageData(d,0,0);return c;
+}
 
 /* QR dentro de una imagen: primero BarcodeDetector, luego jsQR en varias escalas y recortes */
 function qrFromSource(src){
@@ -10600,12 +10621,13 @@ function addOne(f){
   }
   say('<span class="spin"></span>Preparando la imagen…');
   return loadBitmap(f).then(function(bmp){
-    var c=drawScaled(bmp,2200);
+    var c=drawScaled(bmp,3000);
     return toBlob(c,0.86).then(function(b){
       CUR.files.push({kind:'img',name:name,blob:b,w:c.width,h:c.height});
+      CUR.small=Math.max(bw(bmp),bh(bmp))<1800;
       return qrFromSource(bmp).then(function(v){
         if(v){var ok=applyQr(v);if(ok)return;}
-        say('Foto agregada. No encontré QR de DTE en ella; podés usar <b>Leer datos con OCR</b> o escribir los datos.','info');
+        say('Foto agregada. No encontré QR de DTE en ella; podés usar <b>Leer datos con OCR</b> o escribir los datos.'+(CUR.small?' <b>La foto es chica:</b> acercate más o usá la cámara a máxima resolución para que el OCR lea mejor.':''),'info');
       });
     });
   }).catch(function(e){say(esc(e.message||'No pude leer ese archivo.'),'bad');});
@@ -10693,23 +10715,39 @@ function sampleDte(){
 }
 
 /* ---------- OCR (Tesseract en el teléfono, carpeta ocr/) ---------- */
-function loadScriptOnce(src){return new Promise(function(ok,no){if(window.Tesseract)return ok();var sc=document.createElement('script');sc.src=src;sc.onload=ok;sc.onerror=function(){no(new Error('OCR no instalado: falta la carpeta ocr/ junto al index.html.'));};document.head.appendChild(sc);});}
+var OCRBASE=null;
+function loadScriptOnce(src){return new Promise(function(ok,no){var sc=document.createElement('script');sc.src=src;sc.onload=ok;sc.onerror=function(){sc.remove();no(new Error('x'));};document.head.appendChild(sc);});}
+/* busca el lector de texto junto al index.html o dentro de la carpeta ocr/ */
+function loadOcr(){
+  if(window.Tesseract&&OCRBASE)return Promise.resolve(OCRBASE);
+  return loadScriptOnce('tesseract.min.js').then(function(){OCRBASE=new URL('./',location.href).href;return OCRBASE;},function(){
+    return loadScriptOnce('ocr/tesseract.min.js').then(function(){OCRBASE=new URL('ocr/',location.href).href;return OCRBASE;},function(){throw new Error('OCR no instalado: faltan los archivos del lector junto al index.html.');});
+  });
+}
 function runOcr(){
   var imgs=CUR.files.filter(function(f){return f.kind==='img';}).slice(0,3);
   if(!imgs.length)return;
   var b=$('b-ocr');b.disabled=true;
-  var worker=null,text='';
+  var worker=null,texts=[],step='',tot=imgs.length+1,done=0;
+  function prog(m){if(m&&m.status==='recognizing text')say('<span class="spin"></span>Leyendo '+step+'… '+Math.round((m.progress||0)*100)+' %');}
   say('<span class="spin"></span>Cargando el lector (la primera vez tarda)…');
-  loadScriptOnce('ocr/tesseract.min.js').then(function(){
-    var base=new URL('ocr/',location.href).href;
-    return window.Tesseract.createWorker('spa',1,{workerPath:base+'worker.min.js',corePath:base+'core/',langPath:base+'lang/',gzip:true,cacheMethod:'none',logger:function(m){if(m&&m.status==='recognizing text')say('<span class="spin"></span>Leyendo… '+Math.round((m.progress||0)*100)+' %');}});
+  loadOcr().then(function(base){
+    var flat=base.slice(-4)!=='ocr/';   /* en GitHub Pages los archivos pueden ir todos en la raíz */
+    return window.Tesseract.createWorker('spa',1,{workerPath:base+'worker.min.js',corePath:flat?base:base+'core/',langPath:flat?base:base+'lang/',gzip:true,cacheMethod:'none',logger:prog});
   }).then(function(w){
     worker=w;var chain=Promise.resolve();
-    imgs.forEach(function(f,i){chain=chain.then(function(){return blobCanvas(f.blob).then(function(c){return worker.recognize(docFilter(c));}).then(function(r){text+='\n'+((r&&r.data&&r.data.text)||'');});});});
+    imgs.forEach(function(f,i){
+      /* pasada A: fondo normalizado + bloque de texto (mejor para tablas y totales) */
+      chain=chain.then(function(){step='página '+(i+1)+' (1/2)';return worker.setParameters({tessedit_pageseg_mode:'6'});})
+        .then(function(){return blobCanvas(f.blob,3200);}).then(function(c){return worker.recognize(ocrNorm(c));}).then(function(r){texts.push((r&&r.data&&r.data.text)||'');});
+      /* pasada B (solo página 1): gris + página completa (mejor para encabezados y n.º de control) */
+      if(i===0)chain=chain.then(function(){step='página 1 (2/2)';return worker.setParameters({tessedit_pageseg_mode:'3'});})
+        .then(function(){return blobCanvas(f.blob,3200);}).then(function(c){return worker.recognize(c);}).then(function(r){texts.push((r&&r.data&&r.data.text)||'');});
+    });
     return chain;
   }).then(function(){return worker.terminate().catch(function(){});}).then(function(){
-    var n=applyOcr(text);
-    say(n?'<b>OCR listo.</b> Cargué '+n+' dato'+(n>1?'s':'')+'. Lo marcado en ámbar hay que <b>revisarlo contra el documento</b> antes de guardar.':'El OCR no encontró datos claros. Escribilos a mano.',n?'warn':'warn');
+    window.__ocrtxt=texts.join('\n=====\n');var n=applyOcr(texts);
+    say(n?'<b>OCR listo.</b> Cargué '+n+' dato'+(n>1?'s':'')+'. Lo marcado en ámbar hay que <b>revisarlo contra el documento</b> antes de guardar.':'El OCR no encontró datos claros. Escribilos a mano.','warn');
   }).catch(function(e){try{worker&&worker.terminate();}catch(x){}say(esc(e.message||'No se pudo leer la imagen.')+' Podés escribir los datos a mano.','bad');}).then(function(){b.disabled=false;});
 }
 function moneyMatches(text){
@@ -10717,51 +10755,98 @@ function moneyMatches(text){
   while((m=re.exec(text))){var v=num(m[1]);if(v>0&&v<10000000)out.push(v);}return out;
 }
 function parseOcr(text){
-  var o={cands:{nits:[],amts:[]}},lines=text.split(/\r?\n/).map(function(l){return l.trim();}).filter(Boolean),low=text.toLowerCase();
-  var m=UUID_RE.exec(text);if(m)o.codgen=m[0].toUpperCase();
-  m=/DTE-\d{2}-[A-Z0-9]{8}-\d{15}/i.exec(text);if(m){o.numctrl=m[0].toUpperCase();var mm=/(\d{15})$/.exec(o.numctrl);if(mm)o.numdoc=String(parseInt(mm[1],10));}
-  var nits=[],re=/\b\d{4}[-\s]?\d{6}[-\s]?\d{3}[-\s]?\d\b/g;while((m=re.exec(text))){var n=normNit(m[0]);if(nits.indexOf(n)<0)nits.push(n);}
+  var o={cands:{nits:[],amts:[]}},lines=text.split(/\r?\n/).map(function(l){return l.trim();}).filter(Boolean),m;
+  var up=text.replace(/[ \t]+/g,' ');
+  m=UUID_RE.exec(text);if(m)o.codgen=m[0].toUpperCase();
+  /* n.º de control: tolera separadores raros del OCR */
+  m=/DTE\W{0,2}(\d{2})\W{0,2}([A-Z0-9]{8})\W{0,2}(\d{15})/i.exec(text);
+  if(m){o.numctrl=('DTE-'+m[1]+'-'+m[2]+'-'+m[3]).toUpperCase();o.numdoc=String(parseInt(m[3],10));o.dteTipo=m[1];}
+  /* NIT (con o sin guiones). El primero del documento es el emisor; el segundo suele ser el receptor (nosotros) */
+  var nits=[],re=/\b\d{4}[-\s]?\d{6}[-\s]?\d{3}[-\s]?\d\b/g;o.nitAll=[];o.nitPart=(text.match(/\b\d{13}\b/g)||[]);while((m=re.exec(text))){var n=normNit(m[0]);o.nitAll.push(n);if(nits.indexOf(n)<0)nits.push(n);}
   o.cands.nits=nits;if(nits.length)o.nit=nits[0];
-  m=/n\.?\s?r\.?\s?c\.?\s*[:#]?\s*(\d{3,7}\s?-\s?\d)/i.exec(text);if(m)o.nrc=m[1].replace(/\s/g,'');
-  /* fecha */
+  /* NRC con o sin guion: el primero tras la palabra NRC */
+  m=/N\.?\s?R\.?\s?C\.?\s*[:#]?\s*(\d{4,8}(?:\s?-\s?\d)?)/i.exec(text);if(m)o.nrc=m[1].replace(/\s/g,'');
+  /* fecha: la que va junto a "generación"/"emisión"; si no, la primera válida */
+  function okd(y,mo,d){var dt=new Date(y,mo-1,d);if(isNaN(dt)||dt.getFullYear()!==+y||dt.getMonth()!==mo-1||dt.getDate()!==+d)return null;if(y<2015||dt>new Date(Date.now()+864e5*2))return null;return y+'-'+pad(mo,2)+'-'+pad(d,2);}
   var d=null;
-  if((m=/(\d{4})[-\/](\d{2})[-\/](\d{2})/.exec(text)))d=m[1]+'-'+m[2]+'-'+m[3];
-  else if((m=/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\b/.exec(text)))d=m[3]+'-'+pad(m[2],2)+'-'+pad(m[1],2);
-  if(d){var dt=new Date(d+'T00:00:00');if(!isNaN(dt)&&dt.getFullYear()>=2015&&dt<=new Date(Date.now()+864e5*2))o.fecha=d;}
-  /* número de documento no DTE */
+  if((m=/(?:generaci[oó]n|emisi[oó]n)[^\d\n]{0,40}(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/i.exec(text)))d=okd(+m[3],+m[2],+m[1]);
+  if(!d&&(m=/(?:generaci[oó]n|emisi[oó]n)[^\d\n]{0,40}(\d{4})[\/\-.](\d{2})[\/\-.](\d{2})/i.exec(text)))d=okd(+m[1],+m[2],+m[3]);
+  if(!d){var rd=/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\b/g;while(!d&&(m=rd.exec(text)))d=okd(+m[3],+m[2],+m[1]);}
+  if(d)o.fecha=d;
   if(!o.numdoc&&(m=/(?:factura|ccf|comprobante|cr[eé]dito fiscal|documento|n[uú]mero|n[º°o]\.?)\s*(?:n[º°o]\.?|no\.?|#|:)?\s*[:#]?\s*0*(\d{2,10})\b/i.exec(text)))o.numdoc=m[1];
-  /* proveedor */
-  if((m=/(?:raz[oó]n social|denominaci[oó]n|nombre o raz[oó]n|nombre)\s*[:.]\s*([^\n]{4,60})/i.exec(text)))o.prov=m[1].trim();
-  else{var bad=/factura|ticket|\bnit\b|\bnrc\b|fecha|\btel\b|cliente|total|\biva\b|hora|caja|documento|n[uú]mero|www|gracias|comprobante|cr[eé]dito|c[oó]digo|sello|direcci/i;
-    for(var i=0;i<Math.min(lines.length,10);i++){var l=lines[i].replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ0-9 &'.,\-]/g,' ').replace(/\s+/g,' ').trim(),L=(l.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/g)||[]).length;if(L>=5&&L>=l.length*0.6&&!bad.test(l)){o.prov=l.slice(0,60);break;}}}
-  /* montos */
-  var total=null,iva=null,base=null;
+  /* proveedor: etiqueta "NOMBRE/RAZÓN SOCIAL" (la primera es la del emisor) */
+  if((m=/NOMBRE\s*\/?\s*RAZ[OÓ]N\s*SOCIAL\s*[:.]?\s*([^\n]{4,90})/i.exec(up))){
+    var pv=m[1].split(/\||NOMBRE\s*\/?\s*RAZ/i)[0].replace(/\s+/g,' ').trim();if(pv.length>=4)o.prov=pv.slice(0,70);
+  }
+  if(!o.prov&&(m=/(?:denominaci[oó]n|raz[oó]n social|emisor)\s*[:.]\s*([^\n]{4,60})/i.exec(up)))o.prov=m[1].trim();
+  if(!o.prov){var bad=/factura|ticket|\bnit\b|\bnrc\b|fecha|\btel\b|cliente|total|\biva\b|hora|caja|documento|n[uú]mero|www|gracias|comprobante|cr[eé]dito|c[oó]digo|sello|direcci|electr[oó]nico|identificaci|boulevard|colonia/i;
+    for(var i=0;i<Math.min(lines.length,12);i++){var l=lines[i].replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ0-9 &'.,\-]/g,' ').replace(/\s+/g,' ').trim(),L=(l.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/g)||[]).length;if(L>=5&&L>=l.length*0.6&&!bad.test(l)){o.prov=l.slice(0,60);break;}}}
+  /* montos: cada frase tiene su prioridad; el "total a pagar" puede venir ya descontando retenciones, por eso va de último */
+  var found={op:null,cf:null,pagar:null,gen:null,iva:null,base:null,reteiva:null,retrenta:null};
   lines.forEach(function(l){
-    var lw=l.toLowerCase(),v=moneyMatches(l);if(!v.length)return;var last=v[v.length-1];
-    if(/total\s*(a\s*)?pagar|monto\s*total|total\s*operaci|total\s*con\s*iva|^total\b|\btotal\b\s*[:$]/.test(lw)&&!/sub\s*-?\s*total|gravad|exent|descuento|retenci/.test(lw))total=last;
-    else if(/\biva\b|impuesto\s*al\s*valor|13\s*%/.test(lw)&&!/retenci|percepci|1\s*%/.test(lw))iva=last;
-    else if(/sub\s*-?\s*total|ventas?\s*gravadas?|total\s*gravad|suma/.test(lw))base=last;
+    var lw=l.toLowerCase(),v=moneyMatches(l),last=v.length?v[v.length-1]:null,z=/\b0?[.,]00\b/.test(l);
+    if(/iva\s*(retenido|percibido)|retenci[oó]n\s*(de\s*)?iva/.test(lw)){if(/retenido|retenci/.test(lw)&&last!=null)found.reteiva=last;return;}
+    if(/retenci[oó]n.*renta|renta\s*retenid/.test(lw)){if(last!=null)found.retrenta=last;return;}
+    if(last==null)return;
+    if(/monto\s*total\s*(de\s*la\s*)?operaci/.test(lw))found.op=last;
+    else if(/total\s*con\s*iva|total\s*general/.test(lw))found.cf=last;
+    else if(/total\s*(a\s*)?pagar/.test(lw))found.pagar=last;
+    else if(/\biva\b|impuesto\s*al\s*valor|13\s*%/.test(lw)){found.iva=last;}
+    else if(/sub\s*-?\s*total|ventas?\s*gravadas?|total\s*gravad/.test(lw)&&!/descuento|desc\./.test(lw)){if(found.base==null||/sub\s*-?\s*total/.test(lw))found.base=last;}
+    else if(/^total\b|\btotal\s*[:$]/.test(lw)&&!/exent|sujet|afect|descuento|cantidad|viaje|tiempo/.test(lw))found.gen=last;
   });
   var all=moneyMatches(text).filter(function(x,i,a){return a.indexOf(x)===i;}).sort(function(a,b){return b-a;});
   o.cands.amts=all.slice(0,6);
-  if(total==null&&all.length)total=null;
+  var total=[found.op,found.cf,found.gen,found.pagar].filter(function(x){return x!=null;})[0];
   if(total!=null)o.total=total;
-  if(iva!=null)o.iva=iva;if(base!=null)o.base=base;
+  if(found.iva!=null)o.iva=found.iva;
+  if(found.base!=null)o.base=found.base;
+  if(found.reteiva)o.retiva=found.reteiva;if(found.retrenta)o.retrenta=found.retrenta;
   return o;
 }
+function ham(a,b){if(a.length!==b.length)return 99;var d=0;for(var i=0;i<a.length;i++)if(a[i]!==b[i])d++;return d;}
+function voteNits(all,parts){ /* agrupa lecturas casi iguales y vota dígito por dígito (el OCR confunde 6/8, 0/O…) */
+  var cl=[];
+  all.forEach(function(n){var k=nitKey(n),c=null;for(var i=0;i<cl.length;i++)if(ham(cl[i].k,k)<=2){c=cl[i];break;}
+    if(!c){c={k:k,v:{},ks:[]};cl.push(c);}c.v[n]=(c.v[n]||0)+1;c.ks.push(k);});
+  var known={};REG.forEach(function(r){if(r.nit)known[nitKey(r.nit)]=r.nit;});
+  var reps=[],alts=[];
+  cl.forEach(function(c){
+    var rd=c.ks.slice(),ps=(parts||[]).filter(function(pt){return ham(pt,c.k.slice(0,13))<=1;}),cons='';
+    for(var i=0;i<14;i++){var t={},best=null;
+      rd.forEach(function(k){t[k[i]]=(t[k[i]]||0)+1;});
+      if(i<13)ps.forEach(function(pt){t[pt[i]]=(t[pt[i]]||0)+1;});
+      Object.keys(t).forEach(function(d){if(best==null||t[d]>t[best])best=d;});cons+=best;}
+    var kn=Object.keys(c.v).filter(function(n){return known[nitKey(n)];});
+    var best=kn.length?kn[0]:normNit(cons);
+    reps.push(best);Object.keys(c.v).forEach(function(n){if(n!==best&&alts.indexOf(n)<0)alts.push(n);});});
+  return reps.concat(alts);
+}
+function mergeOcr(list){
+  var o={cands:{nits:[],amts:[]}},nitAll=[],nitPart=[];
+  list.forEach(function(t){var q=parseOcr(t);nitAll=nitAll.concat(q.nitAll||[]);nitPart=nitPart.concat(q.nitPart||[]);
+    ['codgen','numctrl','numdoc','dteTipo','nit','nrc','fecha','prov','total','iva','base','retiva','retrenta'].forEach(function(k){if(o[k]==null&&q[k]!=null&&q[k]!=='')o[k]=q[k];});
+    q.cands.amts.forEach(function(a){if(o.cands.amts.indexOf(a)<0)o.cands.amts.push(a);});});
+  o.cands.nits=voteNits(nitAll,nitPart);if(o.cands.nits.length)o.nit=o.cands.nits[0];
+  o.cands.amts.sort(function(a,b){return b-a;});o.cands.amts=o.cands.amts.slice(0,6);return o;
+}
 function applyOcr(text){
-  var o=parseOcr(text),n=0;
+  var o=mergeOcr(Array.isArray(text)?text:[text]),n=0;
   function put(k,v,fmt){if(v==null||v==='')return;if(CUR.src[k]==='qr'||CUR.src[k]==='dte')return;var cur=$('f-'+k).value.trim();if(cur&&CUR.src[k]==='manual')return;setField(k,fmt?fmt(v):v,'ocr');n++;}
+  /* el tipo sale del n.º de control: DTE-01 factura, 03 CCF, 05 nota de crédito, 14 sujeto excluido */
+  if(o.dteTipo&&DTE_TIPO[o.dteTipo]&&DTE_TIPO[o.dteTipo]!==CUR.tipo){CUR.tipo=DTE_TIPO[o.dteTipo];$('f-tipo').value=CUR.tipo;applyTipo();}
   put('prov',o.prov);put('nit',o.nit);put('nrc',o.nrc?normNrc(o.nrc):'');put('fecha',o.fecha);put('numdoc',o.numdoc);put('codgen',o.codgen);put('numctrl',o.numctrl);
+  put('retiva',o.retiva,two);put('retrenta',o.retrenta,two);
   if(o.total!=null){put('total',o.total,two);
-    if(o.iva!=null&&!CUR.exento){setField('iva',two(o.iva),'ocr');setField('base',two(r2(o.total-o.iva)),'calc');n+=2;}
-    else if(o.base!=null&&!CUR.exento&&o.base<o.total){setField('base',two(o.base),'ocr');setField('iva',two(r2(o.total-o.base)),'calc');n+=2;}
+    var esFact=o.dteTipo==='01'||CUR.tipo==='factura';   /* en la factura de consumidor el IVA ya viene incluido en el precio */
+    if(!exento()&&!esFact&&o.iva>0&&o.iva<o.total){setField('iva',two(o.iva),'ocr');setField('base',two(r2(o.total-o.iva)),'calc');n+=2;}
+    else if(!exento()&&!esFact&&o.base>0&&o.base<o.total-0.005){setField('base',two(o.base),'ocr');setField('iva',two(r2(o.total-o.base)),'calc');n+=2;}
     else fromTotal('calc');}
   CUR.cands=o.cands;renderChips();checkDupes();checkIva();return n;
 }
 function renderChips(){
   var nc=(CUR.cands&&CUR.cands.nits)||[],ac=(CUR.cands&&CUR.cands.amts)||[];
-  $('nitchips').innerHTML=nc.length>1?'<span class="sub" style="margin:4px 4px 0 0">NIT en el documento:</span>'+nc.map(function(n){return '<button type="button" class="chip sug" data-nit="'+esc(n)+'">'+esc(n)+'</button>';}).join(''):'';
+  $('nitchips').innerHTML=nc.length>1?'<span class="sub" style="margin:4px 4px 0 0">Otras lecturas de NIT (la ✓ es la más probable):</span>'+nc.map(function(n,i){return '<button type="button" class="chip sug" data-nit="'+esc(n)+'">'+(i===0?'✓ ':'')+esc(n)+'</button>';}).join(''):'';
   $('amtchips').innerHTML=ac.length?'<span class="sub" style="margin:4px 4px 0 0">Montos que vi:</span>'+ac.map(function(a){return '<button type="button" class="chip sug" data-amt="'+a+'">'+usd(a)+'</button>';}).join(''):'';
 }
 
@@ -10818,7 +10903,7 @@ function saveRec(force){
   if(!CUR.files.length)return fail('Falta la foto, el PDF o el JSON del documento.','b-foto');
   if(!f.prov&&!f.nit)return fail('Escribí el proveedor o el NIT.','f-prov');
   if(!/^\d{4}-\d{2}-\d{2}$/.test(f.fecha))return fail('Falta la fecha del documento.','f-fecha');
-  var total=num(f.total);if(!(total>0)&&CUR.tipo!=='otro')return fail('Falta el monto total (con IVA).','f-total');
+  var total=num(f.total);if(!(total>0)&&!t.sm)return fail('Falta el monto total (con IVA).','f-total');
   var d=checkDupes();
   var go=force||(!d.hard.length&&!d.med.length);
   var pre=go?Promise.resolve(true):ask({title:'Posible documento repetido',html:'<p>Esto ya aparece registrado. Si guardás, quedará marcado como <b>posible duplicado</b> en la lista y en el Excel.</p>',buttons:[{t:'No guardar',v:false,c:'line'},{t:'Guardar igual',v:true,c:'bad'}],cancel:false});
@@ -10840,7 +10925,7 @@ function saveRec(force){
         codgen:f.codgen.toUpperCase(),numctrl:f.numctrl,numdoc:f.numdoc,fecha:f.fecha,prov:f.prov,nit:normNit(f.nit),nrc:f.nrc,
         base:isNaN(num(f.base))?'':r2(num(f.base)),iva:isNaN(num(f.iva))?'':r2(num(f.iva)),total:isNaN(total)?0:r2(total),
         retiva:isNaN(num(f.retiva))?'':r2(num(f.retiva)),retrenta:isNaN(num(f.retrenta))?'':r2(num(f.retrenta)),
-        exento:exento(),contrato:f.contrato,estim:f.estim,partida:f.partida,notas:f.notas,
+        exento:exento(),cant:f.cant,contrato:f.contrato,estim:f.estim,partida:f.partida,notas:f.notas,
         fisico:fis?(old&&old.fisico?old.fisico:{fecha:todayStr(),quien:quien}):null,
         quien:old?old.quien:quien,creado:old?old.creado:now,src:Object.assign({},CUR.src),estado:'registrado',
         files:fs,demo:!!CUR.demo,exportado:null,flagDup:d.hard.length>0||d.med.length>0,
@@ -10915,7 +11000,7 @@ function openRec(id){
   var r=REG.find(function(x){return x.id===id;});if(!r)return;
   var rows=[['Proyecto',projOf(r.proj).n+' ('+r.proj+')'],['Tipo',tipoOf(r.tipo).n],['Proveedor',r.prov],['NIT / NRC',[r.nit,r.nrc].filter(Boolean).join(' / ')],['Fecha',fdate(r.fecha)],['N.º documento',r.numdoc],['Cód. generación',r.codgen],['N.º control',r.numctrl],
     ['Subtotal sin IVA',r.base===''?'':usd(r.base)],['IVA 13 %',r.exento?'Exento':(r.iva===''?'':usd(r.iva))],['Total con IVA',usd(r.total)],['Retención IVA',r.retiva?usd(r.retiva):''],['Retención renta',r.retrenta?usd(r.retrenta):''],
-    ['Contrato / OC',r.contrato],['Estimación',r.estim],['Partida',r.partida],['Físico',r.fisico?'Recibido '+fdate(r.fisico.fecha)+' ('+r.fisico.quien+')':'Pendiente'],['Notas',r.notas],['Registró',r.quien+' · '+new Date(r.creado).toLocaleString('es-SV')],['Origen de datos',srcSummary(r)]];
+    ['Cantidad',r.cant],['Contrato / OC',r.contrato],['Estimación',r.estim],['Partida',r.partida],['Físico',r.fisico?'Recibido '+fdate(r.fisico.fecha)+' ('+r.fisico.quien+')':'Pendiente'],['Notas',r.notas],['Registró',r.quien+' · '+new Date(r.creado).toLocaleString('es-SV')],['Origen de datos',srcSummary(r)]];
   var h='<dl class="kv">'+rows.filter(function(x){return x[1];}).map(function(x){return '<dt>'+x[0]+'</dt><dd>'+esc(x[1])+'</dd>';}).join('')+'</dl>';
   if(r.estado==='anulado')h='<div class="alertbox bad"><b>Anulado.</b> '+esc(r.motivo||'')+'</div>'+h;
   var imgs=r.files.filter(function(f){return f.kind==='img';});
@@ -11001,7 +11086,7 @@ function saveBlob(b,name){var a=document.createElement('a');a.href=URL.createObj
 var COLS=[
  ['ID_registro','id'],['Proyecto','proj'],['Tipo_documento','_tipo'],['Codigo_generacion','codgen'],['Numero_control','numctrl'],['Numero_documento','numdoc'],['Fecha_emision','fecha'],
  ['Proveedor','prov'],['NIT','nit'],['NRC','nrc'],['Base_sin_IVA','base','n'],['IVA_13','iva','n'],['Total_con_IVA','total','n'],['Retencion_IVA','retiva','n'],['Retencion_renta','retrenta','n'],
- ['Signo','_signo','n'],['ID_contrato_OC','contrato'],['N_estimacion','estim'],['Partida','partida'],['Fisico_recibido','_fis'],['Fecha_fisico','_fisf'],
+ ['Signo','_signo','n'],['ID_contrato_OC','contrato'],['N_estimacion','estim'],['Partida','partida'],['Cantidad_unidad','cant'],['Fisico_recibido','_fis'],['Fecha_fisico','_fisf'],
  ['Registrado_por','quien'],['Fecha_registro','_creado'],['Origen_datos','_src'],['Alerta','_alerta'],['Estado','_estado'],['Notas','notas'],['Archivo','_arch']
 ];
 function cellVal(r,c){
