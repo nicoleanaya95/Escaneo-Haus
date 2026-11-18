@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prueba de conexión con Microsoft 365</title>
+<style>
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:#f3f2ef;color:#1d222a;margin:0;line-height:1.45}
+header{background:#303844;color:#fff;padding:14px 16px;font-weight:700}
+main{max-width:640px;margin:0 auto;padding:16px}
+.card{background:#fff;border:1px solid #e2dfd9;border-radius:14px;padding:14px;margin-bottom:12px}
+label{display:block;font-size:12px;font-weight:600;margin:8px 0 4px;color:#4a5360}
+input{width:100%;box-sizing:border-box;border:1.5px solid #e2dfd9;border-radius:10px;padding:11px;font-size:16px}
+button{border:0;border-radius:12px;padding:13px 16px;font-weight:700;font-size:15px;background:#8f5e33;color:#fff;margin-top:12px;width:100%;cursor:pointer}
+button.l{background:#fff;color:#303844;border:1.5px solid #e2dfd9}
+.st{border-radius:10px;padding:10px 12px;margin:8px 0;font-size:14px}
+.ok{background:#e4f2ea;color:#25704f}.bad{background:#fbe5e1;color:#a8372a}.warn{background:#fbefd5;color:#8a5a0b}.info{background:#eef1f5;color:#303844}
+code{background:#f3f2ef;padding:1px 5px;border-radius:5px;font-size:12px;word-break:break-all}
+pre{white-space:pre-wrap;word-break:break-word;font-size:12px;background:#f3f2ef;padding:10px;border-radius:8px}
+</style></head><body>
+<header>Prueba de conexión con Microsoft 365 · Escaneo HAUS</header>
+<main>
+<div class="card">
+  <p>Esta página solo prueba si tu cuenta de HAUS puede dar permiso a la app para usar SharePoint. <b>No guarda ni cambia nada</b>: solo lee tu nombre y la lista de sitios.</p>
+  <label for="cid">Application (client) ID</label><input id="cid" autocomplete="off" placeholder="00000000-0000-0000-0000-000000000000">
+  <label for="tid">Directory (tenant) ID</label><input id="tid" autocomplete="off" placeholder="00000000-0000-0000-0000-000000000000">
+  <button id="go">Entrar con Microsoft y probar</button>
+  <button class="l" id="go2">Entrar sin ventana emergente (celular)</button>
+</div>
+<div class="card"><b>Resultado</b><div id="out"><div class="st info">Todavía no probaste.</div></div></div>
+</main>
+<script src="msal-browser.min.js"></script>
+<script>
+var SC=['User.Read','Sites.ReadWrite.All'];
+function $(i){return document.getElementById(i);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function add(cls,html){$('out').insertAdjacentHTML('beforeend','<div class="st '+cls+'">'+html+'</div>');}
+function clear(){$('out').innerHTML='';}
+try{$('cid').value=localStorage.getItem('ms_cid')||'';$('tid').value=localStorage.getItem('ms_tid')||'';}catch(e){}
+var app=null;
+function make(){
+  var c=$('cid').value.trim(),t=$('tid').value.trim();
+  if(!c||!t){clear();add('warn','Falta el Client ID o el Tenant ID.');return Promise.resolve(null);}
+  try{localStorage.setItem('ms_cid',c);localStorage.setItem('ms_tid',t);}catch(e){}
+  app=new msal.PublicClientApplication({auth:{clientId:c,authority:'https://login.microsoftonline.com/'+t,redirectUri:location.origin+location.pathname},cache:{cacheLocation:'sessionStorage'}});
+  return app.initialize().then(function(){return app;});
+}
+function explain(e){
+  var m=(e&&(e.errorMessage||e.message))||String(e),c=(e&&e.errorCode)||'';
+  var raw='<br><code>'+esc(c+' '+m).slice(0,500)+'</code>';
+  if(/AADSTS65001|AADSTS90094|AADSTS65002|AADSTS900941|admin|administrator|interaction_required|consent_required/i.test(c+m))
+    return ['warn','<b>Resultado: hace falta que el administrador apruebe la app.</b> Microsoft no te dejó dar el permiso por tu cuenta. No es un error de la app: es la configuración de seguridad de HAUS. Hay que pedirle esa aprobación al administrador del Microsoft 365.'+raw];
+  if(/AADSTS700016|application.*not found|AADSTS50020|AADSTS700054/i.test(m))return ['bad','Microsoft no reconoce ese Client ID o ese Tenant ID para esta cuenta. Revisalos.'+raw];
+  if(/redirect|AADSTS50011/i.test(m))return ['bad','La dirección de retorno no coincide con la que registraste. Debe ser exactamente <code>'+esc(location.origin+location.pathname)+'</code> como tipo "Single-page application".'+raw];
+  if(/popup|user_cancelled/i.test(c+m))return ['warn','La ventana de Microsoft se cerró o el navegador la bloqueó. Probá el botón de abajo (sin ventana emergente).'+raw];
+  return ['bad','No se pudo entrar.'+raw];
+}
+function after(r){
+  clear();
+  add('ok','✓ Entraste como <b>'+esc(r.account.name||r.account.username)+'</b> ('+esc(r.account.username)+').');
+  add('ok','✓ Sin pedir aprobación de administrador: la cuenta pudo dar el permiso.');
+  var h={Authorization:'Bearer '+r.accessToken};
+  return fetch('https://graph.microsoft.com/v1.0/sites?search=*&$top=15',{headers:h}).then(function(x){return x.json().then(function(j){return [x.status,j];});}).then(function(a){
+    if(a[0]===200){
+      var v=a[1].value||[];
+      add(v.length?'ok':'warn','Sitios de SharePoint que tu cuenta puede ver: <b>'+v.length+'</b><pre>'+esc(v.map(function(s){return (s.displayName||s.name)+'  ·  '+s.webUrl;}).join('\n'))+'</pre>');
+    }else add('warn','Entró, pero SharePoint respondió '+a[0]+': <code>'+esc(JSON.stringify(a[1]).slice(0,300))+'</code>');
+  }).catch(function(e){add('bad','No pude leer SharePoint: '+esc(e.message));});
+}
+$('go').onclick=function(){clear();add('info','Abriendo Microsoft…');make().then(function(a){if(!a)return;return a.loginPopup({scopes:SC}).then(after);}).catch(function(e){clear();var x=explain(e);add(x[0],x[1]);});};
+$('go2').onclick=function(){clear();add('info','Llevándote a Microsoft…');make().then(function(a){if(!a)return;return a.loginRedirect({scopes:SC});}).catch(function(e){clear();var x=explain(e);add(x[0],x[1]);});};
+/* al volver del inicio de sesión sin ventana */
+if($('cid').value&&$('tid').value&&(location.hash.indexOf('code=')>=0||location.hash.indexOf('error=')>=0)){
+  make().then(function(a){return a.handleRedirectPromise();}).then(function(r){if(r)return after(r);}).catch(function(e){clear();var x=explain(e);add(x[0],x[1]);});
+}
+</script></body></html>
