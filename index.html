@@ -11397,6 +11397,11 @@ function parseOcr(text){
   /* n.º de control: tolera separadores raros del OCR */
   m=/DTE\W{0,2}(\d{2})\W{0,2}([A-Z0-9]{8})\W{0,2}(\d{15})/i.exec(text);
   if(m){o.numctrl=('DTE-'+m[1]+'-'+m[2]+'-'+m[3]).toUpperCase();o.numdoc=String(parseInt(m[3],10));o.dteTipo=m[1];}
+  if(!o.numdoc){   /* el OCR a veces parte o ensucia el n.º de control: se busca la tira de ceros + correlativo cerca de "CONTROL" */
+    var mc=/CONTROL[\s\S]{0,60}?(?:\d{2}\W{0,2}[A-Z0-9]{4,10}\W{0,2})?0{5,}\s?(\d{1,9})\b/i.exec(text)||/\b0{7,}\s?(\d{1,8})\b/.exec(text);
+    if(mc&&+mc[1]>0)o.numdoc=String(parseInt(mc[1],10));
+    var mt=/DTE\W{0,2}(\d{2})\b/i.exec(text);if(mt&&!o.dteTipo)o.dteTipo=mt[1];
+  }
   /* NIT (con o sin guiones). El primero del documento es el emisor; el segundo suele ser el receptor (nosotros) */
   var nits=[],re=/\b\d{4}[-\s]?\d{6}[-\s]?\d{3}[-\s]?\d\b/g;o.nitAll=[];o.nitPart=(text.match(/\b\d{13}\b/g)||[]);while((m=re.exec(text))){var n=normNit(m[0]);o.nitAll.push(n);if(nits.indexOf(n)<0)nits.push(n);}
   o.cands.nits=nits;if(nits.length)o.nit=nits[0];
