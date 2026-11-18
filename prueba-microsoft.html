@@ -18,7 +18,7 @@ pre{white-space:pre-wrap;word-break:break-word;font-size:12px;background:#f3f2ef
 <header>Prueba de conexión con Microsoft 365 · Escaneo HAUS</header>
 <main>
 <div class="card">
-  <p>Esta página solo prueba si tu cuenta de HAUS puede dar permiso a la app para usar SharePoint. <b>No guarda ni cambia nada</b>: solo lee tu nombre y la lista de sitios.</p>
+  <p>Esta página solo prueba si tu cuenta de HAUS puede dar permiso a la app para usar SharePoint. <b>No guarda ni cambia nada</b>: solo pide permiso de LECTURA y lee tu nombre y la lista de sitios.</p>
   <label for="cid">Application (client) ID</label><input id="cid" autocomplete="off" placeholder="00000000-0000-0000-0000-000000000000">
   <label for="tid">Directory (tenant) ID</label><input id="tid" autocomplete="off" placeholder="00000000-0000-0000-0000-000000000000">
   <button id="go">Entrar con Microsoft y probar</button>
@@ -28,7 +28,7 @@ pre{white-space:pre-wrap;word-break:break-word;font-size:12px;background:#f3f2ef
 </main>
 <script src="msal-browser.min.js"></script>
 <script>
-var SC=['User.Read','Sites.ReadWrite.All'];
+var SC=['User.Read','Sites.Read.All'];
 function $(i){return document.getElementById(i);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function add(cls,html){$('out').insertAdjacentHTML('beforeend','<div class="st '+cls+'">'+html+'</div>');}
