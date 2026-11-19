@@ -520,7 +520,7 @@ nav.tabs{box-shadow:0 -4px 16px rgba(0,0,0,.06);border-top:0}
     <input type="file" id="in-prov" accept=".csv,.txt,.json,text/csv,text/plain,application/json" hidden>
     <div id="provstat" class="sub" style="margin-top:6px"></div>
     <details class="more" style="margin-top:10px"><summary>¿Qué trae el paquete?</summary>
-      <ul class="sheetinfo"><li><b>Escaneos.xlsx</b>, con una hoja por tipo: Facturas, Quedan, Boletas, Estimaciones, Compromisos (OC, ofertas, solicitudes), Remisiones y Otros.</li><li><b>documentos/</b>, un PDF por registro, nombrado con su ID.</li><li><b>respaldo_registros.json</b>, que es lo que se importa en el otro teléfono.</li></ul></details>
+      <ul class="sheetinfo"><li><b>Escaneos.xlsx</b>. Las dos primeras hojas son <b>Resumen</b> (cuántos documentos y cuánto, por proyecto, con y sin IVA) y <b>Pendientes</b> (qué falta para cerrar cada documento). Después, una hoja por tipo: Facturas, Quedan, Boletas, Estimaciones, Compromisos (OC, ofertas, solicitudes), Remisiones y Otros.</li><li><b>documentos/</b>, un PDF por registro, nombrado con su ID.</li><li><b>respaldo_registros.json</b>, que es lo que se importa en el otro teléfono.</li></ul></details>
   </div>
   <div class="card">
     <h2>Datos de ejemplo</h2>
@@ -11838,11 +11838,12 @@ function loadOcr(){
     return loadScriptOnce('ocr/tesseract.min.js').then(function(){OCRBASE=new URL('ocr/',location.href).href;return OCRBASE;},function(){throw new Error('OCR no instalado: faltan los archivos del lector junto al index.html.');});
   });
 }
-var COMUN=/\b(de|la|el|en|y|por|para|con|del|los|las|total|fecha|nombre|numero|número|documento|cantidad|precio|iva|orden|compra|factura|proveedor|descripci[oó]n|solicitud|pago)\b/gi;
+var COMUN=/\b(de|la|el|en|por|para|con|del|los|las|total|fecha|nombre|numero|número|documento|cantidad|precio|iva|orden|compra|factura|proveedor|descripci[oó]n|solicitud|pago)\b/gi;
+var COMUN4=/\b(total|fecha|nombre|numero|n[uú]mero|documento|cantidad|precio|orden|compra|factura|proveedor|descripci[oó]n|solicitud|pago|cliente|direcci[oó]n|giro|nit|nrc|iva|venta|concepto)\b/gi;
 function quickRead(worker,c){return worker.setParameters({tessedit_pageseg_mode:'6'}).then(function(){return worker.recognize(ocrNorm(c));}).then(function(r){var t=(r&&r.data&&r.data.text)||'';return {c:(r&&r.data&&r.data.confidence)||0,h:(t.match(COMUN)||[]).length};});}
 function fixOrient(worker,p){
   var src=p.base||p.blob;
-  return blobCanvas(src,1000).then(function(c0){
+  return blobCanvas(src,window.ORIW||1000).then(function(c0){
     return quickRead(worker,c0).then(function(r0){
       window.__ori=['0:'+r0.h+'/'+Math.round(r0.c)];
       if(r0.h>=3||r0.c>=50)return 0;   /* ya se lee algo: palabras comunes en español */
@@ -11851,9 +11852,8 @@ function fixOrient(worker,p){
         return quickRead(worker,rotCanvas(c0,d)).then(function(r){window.__ori.push(d+':'+r.h+'/'+Math.round(r.c));if(r.h>best.h+3)best={h:r.h,c:r.c,deg:d};if(best.h>=8)return best.deg;return nx();});})();
     });
   }).then(function(deg){
-    if(!deg)return;
-    if(p.orig){p.rot=((p.rot||0)+deg)%360;return rebuildPage(p);}
-    return rotateBlobPage(p,deg);
+    if(!deg)return 0;
+    return Promise.resolve(p.orig?(p.rot=((p.rot||0)+deg)%360,rebuildPage(p)):rotateBlobPage(p,deg)).then(function(){return deg;});
   });
 }
 /* ---- boleta: lee por separado las celdas de la tabla (fecha, m³, resistencia, descripción) ---- */
@@ -11894,45 +11894,88 @@ function boletaZones(worker,c,r){
 /* la 2.ª pasada solo se hace si la 1.ª no alcanzó para llenar lo principal (ahorra ~8 s) */
 function enoughA(texts,tipo){
   try{var g=guessTipo(texts.join('\n'))||tipo,need={boleta:['numdoc','fecha','cant'],rem:['numdoc','fecha','cant'],est:['total','liquido','fecha'],oc:['total','numdoc','fecha'],oferta:['total','fecha','prov'],sol:['total','fecha','prov']}[g];
+    if(g==='dte'||tipoOf(g).dte){var od=parseOcr(texts.join('\n'));return !!(od.prov&&od.fecha&&od.numdoc&&od.total);}
     if(!need)return false;var o=mergeForm(texts,g);return need.every(function(k){return o[k]!=null&&o[k]!=='';});}catch(e){return false;}
+}
+/* ---- lector: se prepara mientras sacás la foto y se queda listo un rato para la siguiente ---- */
+var OW=[null,null],OIDLE=null,OPR=[0,0];
+function ocrLogger(k){return function(m){OPR[k]=(m&&m.status==='recognizing text')?(m.progress||0):OPR[k];if(window.__prog)window.__prog(m);};}
+function getWorker(k){
+  k=k||0;clearTimeout(OIDLE);
+  if(!OW[k])OW[k]=loadOcr().then(function(base){
+    var flat=base.slice(-4)!=='ocr/';
+    return window.Tesseract.createWorker('spa',1,{workerPath:base+'worker.min.js',corePath:flat?base:base+'core/',langPath:flat?base:base+'lang/',gzip:true,cacheMethod:'none',logger:ocrLogger(k)}).then(function(w){return w.setParameters({tessedit_do_invert:'0'}).then(function(){return w;},function(){return w;});});
+  }).catch(function(e){OW[k]=null;throw e;});
+  return OW[k];
+}
+function releaseWorkers(){clearTimeout(OIDLE);OW.forEach(function(w,i){if(w){w.then(function(x){return x.terminate();}).catch(function(){});OW[i]=null;}});}
+function idleRelease(){clearTimeout(OIDLE);OIDLE=setTimeout(releaseWorkers,90000);}
+function warmOcr(){try{if(!OW[0])getWorker(0).catch(function(){});if(canSplit()&&!OW[1])getWorker(1).catch(function(){});}catch(e){}}
+/* opcional: la página se lee en dos mitades a la vez (corte por una franja en blanco) */
+function canSplit(){return !!window.FORCESPLIT;}   /* apagado: en pruebas ganaba ~20 % pero a veces leía peor; queda como opción */
+function splitRow(c){
+  var w=c.width,h=c.height,d=c.getContext('2d').getImageData(0,0,w,h).data,rows=[],y,x,mx=1;
+  for(y=0;y<h;y++){var n=0;for(x=0;x<w;x+=4)if(d[(y*w+x)*4]<110)n++;rows.push(n);if(n>mx)mx=n;}
+  var lo=Math.round(h*0.35),hi=Math.round(h*0.65),best=null,run=0,thr=mx*0.01;
+  for(y=lo;y<=hi;y++){if(rows[y]<=thr){run++;if(!best||run>best.len)best={end:y,len:run};}else run=0;}
+  if(!best||best.len<Math.max(5,h/400))return 0;
+  return best.end-Math.floor(best.len/2);
+}
+function cropC(c,y0,y1){var o=document.createElement('canvas');o.width=c.width;o.height=y1-y0;o.getContext('2d').drawImage(c,0,y0,c.width,y1-y0,0,0,c.width,y1-y0);return o;}
+function readImg(w0,c,psm){
+  var sy=canSplit()?splitRow(c):0;
+  function one(w,cv){return w.setParameters({tessedit_pageseg_mode:psm}).then(function(){return w.recognize(cv);}).then(function(r){return (r&&r.data&&r.data.text)||'';});}
+  if(!sy)return one(w0,c);
+  return getWorker(1).then(function(w1){
+    return Promise.all([one(w0,cropC(c,0,sy)),one(w1,cropC(c,sy,c.height))]).then(function(t){return t[0]+'\n'+t[1];});
+  },function(){return one(w0,c);});
 }
 function runOcr(){
   var cur=CUR,imgs=cur.files.filter(function(f){return f.kind==='img';}).slice(0,cur.tipo==='est'?1:3);   /* estimación: se lee solo la hoja resumen (la 1.ª); el desglose va de anexo */
   if(!imgs.length||cur.busy)return Promise.resolve();
   cur.busy=true;var b=$('b-ocr');b.disabled=true;
-  var worker=null,texts=[],step='';
-  function prog(m){if(m&&m.status==='recognizing text'&&CUR===cur)say('<span class="spin"></span>Leyendo '+step+'… '+Math.round((m.progress||0)*100)+' %');}
-  say('<span class="spin"></span>Cargando el lector (la primera vez tarda)…');
-  return loadOcr().then(function(base){
-    var flat=base.slice(-4)!=='ocr/';
-    return window.Tesseract.createWorker('spa',1,{workerPath:base+'worker.min.js',corePath:flat?base:base+'core/',langPath:flat?base:base+'lang/',gzip:true,cacheMethod:'none',logger:prog});
-  }).then(function(w){
+  var worker=null,texts=[],step='',t0=Date.now();
+  window.__prog=function(m){if(m&&m.status==='recognizing text'&&CUR===cur){var pr=OW[1]&&canSplit()?(OPR[0]+OPR[1])/2:OPR[0];say('<span class="spin"></span>Leyendo '+step+'… '+Math.round(pr*100)+' %');}};
+  say('<span class="spin"></span>Preparando el lector…');
+  return getWorker(0).then(function(w){
     worker=w;var chain=Promise.resolve();
     imgs.forEach(function(f,i){
-      chain=chain.then(function(){step='la orientación de la página '+(i+1);return fixOrient(worker,f);})
-        .then(function(){step='página '+(i+1);return worker.setParameters({tessedit_pageseg_mode:'6'});})
-        .then(function(){return blobCanvas(f.base||f.blob,3200);}).then(function(c){
-          var cn=ocrNorm(c),wz=i===0&&(cur.tipo==='boleta'||cur.tipo==='rem');
-          return (wz?worker.recognize(cn,{},{blocks:true}):worker.recognize(cn)).then(function(r){
+      var skipO=!!f.guide,wz=i===0&&(cur.tipo==='boleta'||cur.tipo==='rem');
+      function passA(){
+        step='página '+(i+1);OPR=[0,0];
+        return blobCanvas(f.base||f.blob,window.OCRW||3200).then(function(c){
+          var cn=ocrNorm(c);
+          if(wz)return worker.setParameters({tessedit_pageseg_mode:'6'}).then(function(){return worker.recognize(cn,{},{blocks:true});}).then(function(r){
             texts.push((r&&r.data&&r.data.text)||'');
-            if(wz){step='los datos de la tabla';return boletaZones(worker,cn,r).then(function(z){if(z)texts.unshift(z);});}
-          });});
+            step='los datos de la tabla';return boletaZones(worker,cn,r).then(function(z){if(z)texts.unshift(z);});});
+          return readImg(worker,cn,'6').then(function(t){texts.push(t);});
+        });
+      }
+      chain=chain.then(function(){
+        if(skipO){window.__ori=['foto con marco: sin revisar giro'];return;}
+        step='la orientación de la página '+(i+1);return fixOrient(worker,f);
+      }).then(passA);
       if(i===0)chain=chain.then(function(){
+        if(skipO&&((texts.join('\n').match(COMUN4)||[]).length<3)){   /* la foto con marco salió girada: se prueba el giro y se vuelve a leer */
+          step='la orientación de la página 1';
+          return fixOrient(worker,f).then(function(deg){if(deg){texts.length=0;return passA();}});
+        }
+      }).then(function(){
         if(enoughA(texts,cur.tipo))return;
-        step='página 1 (2.ª pasada)';
+        step='página 1 (2.ª pasada)';OPR=[0,0];
         var gt=guessTipo(texts.join('\n'))||cur.tipo,m2=(gt==='dte'||!FORM[gt])?'3':'11';
-        return worker.setParameters({tessedit_pageseg_mode:m2}).then(function(){return blobCanvas(f.base||f.blob,3200);}).then(function(c){return worker.recognize(c);}).then(function(r){texts.push((r&&r.data&&r.data.text)||'');});
+        return blobCanvas(f.base||f.blob,window.OCRW||3200).then(function(c){return readImg(worker,c,m2);}).then(function(t){texts.push(t);});
       });
     });
     return chain;
-  }).then(function(){return worker.terminate().catch(function(){});}).then(function(){
-    window.__ocrtxt=texts.join('\n=====\n');window.__ocrinfo='v9 · orient '+(window.__ori||[]).join(' ')+' · tipo '+cur.tipo+' · páginas '+imgs.length+' · '+(window.__zdbg||'sin tabla');window.__zdbg='';
+  }).then(function(){idleRelease();}).then(function(){
+    window.__ocrtxt=texts.join('\n=====\n');window.__ocrinfo='v11 · '+Math.round((Date.now()-t0)/100)/10+' s · '+(canSplit()?'2 hilos':'1 hilo')+' · orient '+(window.__ori||[]).join(' ')+' · tipo '+cur.tipo+' · páginas '+imgs.length+' · '+(window.__zdbg||'sin tabla');window.__zdbg='';
     if(CUR!==cur)return;
     renderPages();$('b-dbg').hidden=false;
     var n=applyOcr(texts);
     autoLink();
     say(n?'<b>Leí '+n+' dato'+(n>1?'s':'')+'.</b> Lo marcado en ámbar hay que <b>revisarlo contra el documento</b> antes de guardar.':'No encontré datos claros en la imagen. Probá con más luz y la hoja completa, o escribilos a mano.','warn');
-  }).catch(function(e){try{worker&&worker.terminate();}catch(x){}if(CUR===cur)say(esc(e.message||'No se pudo leer la imagen.')+' Podés escribir los datos a mano.','bad');}).then(function(){cur.busy=false;b.disabled=false;});
+  }).catch(function(e){releaseWorkers();if(CUR===cur)say(esc(e.message||'No se pudo leer la imagen.')+' Podés escribir los datos a mano.','bad');}).then(function(){cur.busy=false;b.disabled=false;});
 }
 
 
@@ -12342,9 +12385,36 @@ function sheetXml(cols,rows){
   });
   return sh+'</sheetData><autoFilter ref="A1:'+colL(cols.length-1)+(rows.length+1)+'"/></worksheet>';
 }
+/* hojas derivadas: Resumen (por proyecto y tipo, con y sin IVA) y Pendientes (lo que falta para cerrar cada documento) */
+function extraSheets(rows){
+  var out=[],by={},ks=[];
+  rows.forEach(function(r){if(r.estado==='anulado'||r.demo)return;var t=tipoOf(r.tipo),key=(r.proj||'(sin proyecto)')+'|'+t.hoja;
+    var o=by[key];if(!o){o=by[key]={proj:r.proj||'(sin proyecto)',hoja:t.hoja,n:0,base:0,iva:0,total:0};ks.push(key);}
+    var sg=t.signo||1;o.n++;
+    if(t.dte||r.tipo==='oc'||r.tipo==='oferta'||r.tipo==='sol'){o.base+=sg*(+r.base||0);o.iva+=sg*(+r.iva||0);o.total+=sg*(+r.total||0);}
+    else if(r.tipo==='est'){o.total+=(+r.total||0);}});
+  if(ks.length){
+    var rs=ks.sort().map(function(k){var o=by[k];return {proj:o.proj,hoja:o.hoja,n:o.n,base:Math.round(o.base*100)/100,iva:Math.round(o.iva*100)/100,total:Math.round(o.total*100)/100};});
+    out.push({s:{n:'Resumen',h:'Resumen',cols:[['Proyecto','proj'],['Hoja','hoja'],['Documentos','n','n'],['Base_sin_IVA','base','n'],['IVA_13','iva','n'],['Total_con_IVA','total','n']]},rows:rs});
+  }
+  var pend=[];
+  function add(r,m){pend.push({proj:r.proj||'',tipoN:tipoOf(r.tipo).n,numdoc:r.numdoc||'',prov:r.prov||'',total:r.total===''||r.total==null?'':r.total,motivo:m,id:r.id,quien:r.quien||''});}
+  REG.forEach(function(r){
+    if(r.estado==='anulado'||r.demo)return;
+    if(tipoOf(r.tipo).dte&&sinQuedan(r))add(r,'DTE sin quedan');
+    if(needsAsig(r))add(r,'Sin contrato / OC asignado');
+    if(r.tipo==='est'&&r.eestado==='Recibida')add(r,'Estimación recibida, falta aprobar');
+    if(tipoOf(r.tipo).dte&&(r.nrs||[]).length){var f=boletasDe(r).length;if(f<r.nrs.length)add(r,'Faltan '+(r.nrs.length-f)+' de '+r.nrs.length+' boletas por escanear');}
+    if(r.tipo==='boleta'&&!(r.dtes||[]).length&&!REG.some(function(d){return d.estado!=='anulado'&&(d.nrs||[]).indexOf(String(parseInt(r.numdoc,10)))>=0;}))add(r,'Boleta sin DTE');
+    flagsOf(r).forEach(function(f){if(f[1]==='bad')add(r,f[0]);});
+  });
+  if(pend.length)out.push({s:{n:'Pendientes',h:'Pendientes',cols:[['Motivo','motivo'],['Proyecto','proj'],['Tipo','tipoN'],['Numero_documento','numdoc'],['Proveedor','prov'],['Total','total','n'],['ID_registro','id'],['Registrado_por','quien']]},rows:pend});
+  return out;
+}
 function makeXlsx(rows){
   var used=SHEETS.map(function(s){return {s:s,rows:rows.filter(function(r){return tipoOf(r.tipo).hoja===s.h;})};}).filter(function(x){return x.rows.length;});
   if(!used.length)used=[{s:SHEETS[0],rows:[]}];
+  var ex=extraSheets(rows);if(ex.length)used=ex.concat(used);   /* Resumen y Pendientes van primero: es lo que se mira antes que el detalle */
   var H='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',n=used.length,i;
   var st=H+'<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF303844"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
   var ct=H+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>';
@@ -12512,6 +12582,7 @@ function refreshBadge(){var n=REG.filter(function(r){return r.estado!=='anulado'
 function showForm(){go('scan');renderTipos();applyTipo();renderProjects();renderPages();checkDupes();}
 function startScan(tipo){
   CUR=newCur(tipo);clearForm();if(tipo==='est')setField('frec',todayStr(),'manual');
+  if(tipo!=='quedan')warmOcr();
   takePhoto(tipo);
 }
 function onFiles(list){
